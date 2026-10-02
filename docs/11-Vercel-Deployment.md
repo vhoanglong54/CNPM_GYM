@@ -2,6 +2,16 @@
 
 Dự án dùng một Git repository nhưng tạo hai Vercel Project độc lập. PostgreSQL local trong Docker chỉ dùng khi phát triển; production dùng PostgreSQL được quản lý như Neon, Supabase hoặc Prisma Postgres.
 
+## Các địa chỉ production và cách sử dụng
+
+| Địa chỉ | Dành cho ai | Tác dụng |
+|---|---|---|
+| [Frontend Titan Gym](https://titan-gym-web.vercel.app) | Chủ phòng, Lễ tân, PT và Hội viên | **Link chính để mở và thao tác ứng dụng:** đăng nhập, mua gói, giao dịch, lịch PT, check-in, hồ sơ và dashboard. |
+| [Backend API](https://titan-gym-api.vercel.app/api) | Frontend và người vận hành hệ thống | Cung cấp dữ liệu/nghiệp vụ cho Frontend. Mở trực tiếp chỉ để kiểm tra health; kết quả bình thường là JSON có trạng thái `ok`, không phải trang giao diện. |
+| [Swagger](https://titan-gym-api.vercel.app/api/docs) | Lập trình viên và người kiểm thử API | Hiển thị danh sách endpoint, DTO và cho phép gửi request thử. Không dùng thay Frontend; các request POST/PATCH/DELETE có thể thay đổi dữ liệu production. |
+
+Khi demo hoặc sử dụng nghiệp vụ, luôn bắt đầu tại **Frontend**. Trình duyệt sẽ tự gọi Backend API; người dùng thông thường không cần mở API hoặc Swagger.
+
 ## 1. Chuẩn bị database cloud
 
 1. Tạo PostgreSQL database trong Vercel Marketplace. Neon phù hợp cho bản demo.
@@ -53,12 +63,7 @@ OWNER_EMAIL=<email chủ phòng>
 SEED_PASSWORD=<chỉ cần khi chạy seed thủ công>
 ```
 
-Deploy và kiểm tra:
-
-```text
-https://titan-gym-api.vercel.app/api
-https://titan-gym-api.vercel.app/api/docs
-```
+Sau khi deploy, kiểm tra [Backend API](https://titan-gym-api.vercel.app/api) trả JSON trạng thái `ok`. Dùng [Swagger](https://titan-gym-api.vercel.app/api/docs) khi cần kiểm tra chi tiết endpoint.
 
 Nếu tên miền frontend thực tế khác ví dụ trên, sửa `FRONTEND_URL` rồi redeploy backend. Có thể khai báo nhiều URL, phân cách bằng dấu phẩy.
 

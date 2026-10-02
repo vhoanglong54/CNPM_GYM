@@ -11,6 +11,16 @@ Responsive Web App quản lý một phòng Gym, triển khai theo `GYM_Managemen
 - Database: PostgreSQL 17, Prisma ORM, migration có version.
 - Hạ tầng local: Docker Compose.
 
+## Truy cập bản production
+
+| Link | Tác dụng |
+|---|---|
+| [Frontend Titan Gym](https://titan-gym-web.vercel.app) | **Mở link này để đăng nhập và thao tác toàn bộ giao diện ứng dụng.** |
+| [Backend API](https://titan-gym-api.vercel.app/api) | Dịch vụ dữ liệu mà Frontend tự gọi; mở trực tiếp chỉ để kiểm tra trạng thái backend. |
+| [Swagger](https://titan-gym-api.vercel.app/api/docs) | Tài liệu và công cụ thử API cho lập trình viên/kiểm thử kỹ thuật; không phải giao diện người dùng. |
+
+Kịch bản thao tác production theo từng vai trò nằm tại [docs/10-UI-Test-Guide.md](docs/10-UI-Test-Guide.md). Không cần chạy Docker hoặc `npm run dev` khi sử dụng các link production trên.
+
 ## Chạy dự án trên máy hiện tại để demo
 
 Các dependency, file `.env`, migration và dữ liệu mẫu đã được chuẩn bị trên máy này. Mỗi lần cần demo, mở Docker Desktop, mở PowerShell tại thư mục `D:\QuanLyPhongGym` và chạy đúng hai lệnh:
@@ -57,7 +67,7 @@ Trước khi chạy, cần mở `backend/.env` và thay `JWT_SECRET`, `SEED_PASS
 
 ## Tài khoản mẫu
 
-Mật khẩu lấy từ `SEED_PASSWORD` trong `backend/.env` (workspace local hiện dùng `Gym@123456`). Hãy đổi giá trị này khi triển khai.
+Mật khẩu lấy từ `SEED_PASSWORD` của môi trường tương ứng. Không ghi hoặc commit mật khẩu production vào tài liệu; người quản trị cung cấp mật khẩu cho người thực hiện demo.
 
 | Vai trò | Email |
 |---|---|

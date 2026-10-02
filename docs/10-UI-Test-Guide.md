@@ -1,10 +1,29 @@
 # Hướng dẫn thao tác và kiểm thử giao diện
 
-Tài liệu này dùng để kiểm tra từng chức năng và luồng phối hợp giữa Chủ phòng, Lễ tân, PT và Hội viên. Mật khẩu của toàn bộ tài khoản mẫu là giá trị `SEED_PASSWORD` trong `backend/.env` (workspace hiện tại mặc định là `Gym@123456`).
+Tài liệu này dùng để kiểm tra từng chức năng và luồng phối hợp giữa Chủ phòng, Lễ tân, PT và Hội viên. Mật khẩu của toàn bộ tài khoản mẫu là giá trị `SEED_PASSWORD` do người quản trị môi trường cung cấp; không ghi mật khẩu production vào tài liệu hoặc Git.
 
 ## 1. Chuẩn bị hệ thống
 
-Mở Docker Desktop, sau đó chạy tại `D:\QuanLyPhongGym`:
+### 1.1 Kiểm thử bản production trên Vercel
+
+Đây là cách mặc định khi demo hoặc kiểm thử trên máy tính và điện thoại. Không cần mở Docker Desktop, chạy lệnh hay kết nối cùng Wi-Fi.
+
+| Địa chỉ | Mục đích | Có dùng để thao tác giao diện không? |
+|---|---|---|
+| [Frontend Titan Gym](https://titan-gym-web.vercel.app) | Mở ứng dụng để đăng nhập và thực hiện toàn bộ kịch bản bên dưới. | **Có — người dùng mở link này.** |
+| [Backend API](https://titan-gym-api.vercel.app/api) | Kiểm tra dịch vụ backend còn hoạt động; kết quả là JSON trạng thái `ok`. Frontend tự gọi địa chỉ này. | Không. |
+| [Swagger API](https://titan-gym-api.vercel.app/api/docs) | Xem tài liệu và thử các API dành cho lập trình viên/kiểm thử kỹ thuật. Một số lệnh có thể thay đổi dữ liệu production. | Không phải giao diện nghiệp vụ. |
+
+Các bước chuẩn bị:
+
+1. Mở [https://titan-gym-web.vercel.app](https://titan-gym-web.vercel.app) bằng Chrome hoặc Edge độc lập.
+2. Dùng cửa sổ ẩn danh, hồ sơ trình duyệt khác hoặc thiết bị khác cho mỗi vai trò cần quan sát đồng thời.
+3. Trên thiết bị quét QR, cho phép quyền camera khi trình duyệt hỏi. Link production dùng HTTPS nên đáp ứng yêu cầu secure context của camera.
+4. Nếu ứng dụng không tải dữ liệu, kiểm tra [Backend API](https://titan-gym-api.vercel.app/api). Chỉ dùng Swagger khi cần kiểm tra request/response API.
+
+### 1.2 Kiểm thử môi trường local khi phát triển
+
+Chỉ dùng phần này khi cần chạy và sửa mã trên máy. Mở Docker Desktop, sau đó chạy tại `D:\QuanLyPhongGym`:
 
 ```powershell
 docker compose up -d
@@ -48,7 +67,7 @@ Kết quả mong đợi:
 - OTP đúng kích hoạt tài khoản; OTP sai hoặc hết hạn bị từ chối.
 - Sau khi đăng nhập, người dùng chỉ thấy menu dành cho Hội viên.
 
-Nếu môi trường chưa cấu hình SMTP thật và `DEV_OTP_ENABLED=true`, backend có thể dùng OTP dự phòng phục vụ phát triển. Khi test gửi mail thật phải kiểm tra `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` trong `backend/.env`.
+Production đã tắt OTP development và sử dụng SMTP đã cấu hình. Với môi trường local chưa cấu hình SMTP thật và `DEV_OTP_ENABLED=true`, backend có thể dùng OTP dự phòng phục vụ phát triển. Khi test gửi mail local phải kiểm tra `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` trong `backend/.env`.
 
 ## 4. Luồng mua gói và theo dõi giao dịch giữa các vai trò
 
@@ -154,7 +173,7 @@ Tạo một lịch khác rồi hủy từ tài khoản được phép. Kết qu�
 7. Kiểm tra bản ghi mới trong lịch sử của cả Lễ tân và Hội viên.
 8. Thử xác nhận lại cùng hội viên trong ngày, mã không tồn tại hoặc hội viên không có gói Gym hiệu lực.
 
-Nếu camera không mở được, nhập `MB-000101` vào ô mã hội viên rồi xác nhận. Camera trên trình duyệt yêu cầu `localhost` hoặc HTTPS; khi truy cập bằng IP LAN qua HTTP, hãy dùng nhập mã thủ công. Trên laptop tại quầy, mở `http://localhost:5173/checkin` bằng Chrome/Edge độc lập, cho phép quyền camera rồi quét QR đang hiển thị trên điện thoại Hội viên. Không cần camera để kiểm tra phần còn lại của quy trình.
+Trên thiết bị tại quầy, mở [https://titan-gym-web.vercel.app/checkin](https://titan-gym-web.vercel.app/checkin) bằng Chrome/Edge độc lập, cho phép quyền camera rồi quét QR đang hiển thị trên điện thoại Hội viên. Nếu camera vẫn không mở hoặc thiết bị không có camera, nhập `MB-000101` vào ô mã hội viên rồi xác nhận. Khi kiểm thử local bằng IP LAN qua HTTP, trình duyệt có thể chặn camera; dùng `http://localhost:5173/checkin` ngay trên máy chủ hoặc nhập mã thủ công. Không cần camera để kiểm tra phần còn lại của quy trình.
 
 Kết quả mong đợi:
 
@@ -197,26 +216,29 @@ Lưu ý: chạy lại `npm run db:seed` sẽ đặt lại mật khẩu của cá
 
 Kịch bản nhanh:
 
-1. Máy chủ chạy Docker và `npm run dev`.
+1. Mỗi máy mở [https://titan-gym-web.vercel.app](https://titan-gym-web.vercel.app); không cần một máy đóng vai trò máy chủ.
 2. Máy A đăng nhập Hội viên, máy B đăng nhập Lễ tân, máy C đăng nhập Chủ phòng, máy D đăng nhập PT.
 3. Máy A tạo đơn; B/C nhìn thấy đơn chờ và một trong hai máy xác nhận thu.
 4. A nhìn thấy đơn hoàn tất và quyền lợi mới.
 5. D mở ca PT; A (với tài khoản có gói PT) đặt lịch; D xác nhận.
 6. B check-in một hội viên; C quan sát dashboard/lịch sử.
 
-Tất cả máy dùng các token đăng nhập riêng trong trình duyệt nhưng gọi cùng Backend trên máy chủ. Backend dùng Prisma đọc/ghi cùng PostgreSQL trong container, vì vậy không có database riêng trên từng máy khách. Giao dịch database được commit một lần và lần tải dữ liệu tiếp theo ở máy khác sẽ nhận cùng kết quả.
+Tất cả máy dùng các token đăng nhập riêng trong trình duyệt nhưng cùng gọi Backend production tại `https://titan-gym-api.vercel.app/api`. Backend dùng Prisma đọc/ghi cùng PostgreSQL Neon, vì vậy không có database riêng trên từng máy khách. Giao dịch database được commit một lần và lần tải dữ liệu tiếp theo ở máy khác sẽ nhận cùng kết quả.
 
-Nếu máy khác không truy cập được:
+Nếu kiểm thử production không truy cập được:
 
-1. Kiểm tra các máy cùng mạng và không dùng Wi-Fi khách bị cô lập thiết bị.
-2. Kiểm tra URL dùng IPv4 của máy chủ, không dùng `localhost` trên máy khách.
-3. Kiểm tra `docker compose ps` và terminal `npm run dev` trên máy chủ.
-4. Cho phép Node.js qua Windows Firewall ở mạng Private.
-5. Kiểm tra cổng `5173` và `3000` không bị ứng dụng khác chiếm.
+1. Xác nhận đang mở đúng `https://titan-gym-web.vercel.app`, không phải URL `localhost` hoặc URL deployment preview ngẫu nhiên.
+2. Mở [Backend API](https://titan-gym-api.vercel.app/api) và kiểm tra có JSON với trạng thái `ok`.
+3. Thử cửa sổ ẩn danh hoặc tải lại trang, sau đó kiểm tra kết nối Internet của thiết bị.
+4. Nếu Frontend mở được nhưng thao tác lỗi, dùng DevTools hoặc [Swagger](https://titan-gym-api.vercel.app/api/docs) để kiểm tra kỹ thuật.
+
+Nếu kiểm thử local/LAN, kiểm tra các máy cùng mạng, IPv4 của máy chủ, `docker compose ps`, terminal `npm run dev`, Windows Firewall và các cổng `5173`/`3000`.
 
 ## 10. Kết thúc buổi test
 
-Nhấn `Ctrl+C` tại terminal chạy ứng dụng. Nếu muốn dừng PostgreSQL:
+Với bản production, chỉ cần đăng xuất và đóng trình duyệt; không phải dừng Vercel hoặc Neon.
+
+Với môi trường local, nhấn `Ctrl+C` tại terminal chạy ứng dụng. Nếu muốn dừng PostgreSQL:
 
 ```powershell
 docker compose down
