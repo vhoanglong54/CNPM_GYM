@@ -125,3 +125,13 @@ PostgreSQL chạy trong container `gym-management-db`; cổng `5432` chỉ đư�
 
 Hướng dẫn thao tác và kịch bản kiểm thử đầy đủ: [docs/10-UI-Test-Guide.md](docs/10-UI-Test-Guide.md).
 
+## Deploy lên Vercel
+
+Dự án đã được chuẩn bị để deploy từ một Git repository thành hai Vercel Project:
+
+- `frontend/`: React/Vite, có HTTPS và fallback cho React Router.
+- `backend/`: NestJS chạy dưới dạng Vercel Function.
+- Database production: PostgreSQL cloud; container trong `docker-compose.yml` chỉ dành cho local.
+
+Sau khi liên kết repository, push vào nhánh `main` sẽ tự động tạo production deployment. Hướng dẫn cấu hình biến môi trường, migration và kiểm tra sau deploy nằm tại [docs/11-Vercel-Deployment.md](docs/11-Vercel-Deployment.md).
+
