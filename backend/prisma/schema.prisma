@@ -1,0 +1,326 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserStatus {
+  UNVERIFIED
+  ACTIVE
+  INACTIVE
+}
+
+enum RoleCode {
+  OWNER
+  RECEPTIONIST
+  TRAINER
+  MEMBER
+}
+
+enum ProductType {
+  MEMBERSHIP
+  PT_PACKAGE
+}
+
+enum MembershipType {
+  DURATION
+  VISITS
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PAID
+  FAILED
+}
+
+enum PaymentMethod {
+  CASH
+  TRANSFER_DEMO
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+}
+
+model User {
+  id                 String                   @id @default(uuid())
+  email              String                   @unique
+  passwordHash       String
+  fullName           String
+  phone              String?
+  status             UserStatus               @default(UNVERIFIED)
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
+  roles              UserRole[]
+  verificationTokens EmailVerificationToken[]
+  memberProfile      MemberProfile?
+  trainerProfile     TrainerProfile?
+  orders             Order[]                  @relation("MemberOrders")
+  confirmedPayments  Payment[]                @relation("ConfirmedPayments")
+  auditLogs          AuditLog[]                @relation("AuditActor")
+
+  @@map("users")
+}
+
+model Role {
+  id          String    @id @default(uuid())
+  code        RoleCode  @unique
+  name        String
+  userRoles   UserRole[]
+
+  @@map("roles")
+}
+
+model UserRole {
+  userId String
+  roleId String
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role   Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@map("user_roles")
+}
+
+model EmailVerificationToken {
+  id        String   @id @default(uuid())
+  userId    String
+  tokenHash String
+  expiresAt DateTime
+  usedAt    DateTime?
+  attempts  Int      @default(0)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("email_verification_tokens")
+}
+
+model MemberProfile {
+  id          String             @id @default(uuid())
+  userId      String             @unique
+  memberCode  String             @unique
+  dateOfBirth DateTime?
+  address     String?
+  joinedAt    DateTime           @default(now())
+  user        User               @relation(fields: [userId], references: [id])
+  memberships MemberMembership[]
+  ptPackages  MemberPtPackage[]
+  bookings    PtBooking[]
+  checkins    Checkin[]
+
+  @@map("member_profiles")
+}
+
+model TrainerProfile {
+  id             String   @id @default(uuid())
+  userId         String   @unique
+  trainerCode    String   @unique
+  bio            String?
+  specialties    String?
+  yearsExperience Int     @default(0)
+  user           User     @relation(fields: [userId], references: [id])
+  slots          PtSlot[]
+
+  @@map("trainer_profiles")
+}
+
+model MembershipPlan {
+  id            String             @id @default(uuid())
+  name          String
+  description   String?
+  type          MembershipType
+  price         Decimal            @db.Decimal(12, 2)
+  durationDays  Int?
+  visitLimit    Int?
+  isActive      Boolean            @default(true)
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  memberships   MemberMembership[]
+
+  @@map("membership_plans")
+}
+
+model MemberMembership {
+  id             String         @id @default(uuid())
+  memberId       String
+  planId         String
+  orderItemId    String         @unique
+  startDate      DateTime
+  endDate        DateTime?
+  visitsTotal    Int?
+  visitsUsed     Int            @default(0)
+  isPaused       Boolean        @default(false)
+  createdAt      DateTime       @default(now())
+  member         MemberProfile  @relation(fields: [memberId], references: [id])
+  plan           MembershipPlan @relation(fields: [planId], references: [id])
+  orderItem      OrderItem      @relation(fields: [orderItemId], references: [id])
+  checkins       Checkin[]
+
+  @@index([memberId, startDate, endDate])
+  @@map("member_memberships")
+}
+
+model PtPackage {
+  id          String            @id @default(uuid())
+  name        String
+  description String?
+  sessionCount Int
+  price       Decimal           @db.Decimal(12, 2)
+  isActive    Boolean           @default(true)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  memberPackages MemberPtPackage[]
+
+  @@map("pt_packages")
+}
+
+model MemberPtPackage {
+  id            String        @id @default(uuid())
+  memberId      String
+  packageId     String
+  orderItemId   String        @unique
+  sessionsTotal Int
+  sessionsUsed  Int           @default(0)
+  expiresAt     DateTime?
+  createdAt     DateTime      @default(now())
+  member        MemberProfile @relation(fields: [memberId], references: [id])
+  package       PtPackage     @relation(fields: [packageId], references: [id])
+  orderItem     OrderItem     @relation(fields: [orderItemId], references: [id])
+  bookings      PtBooking[]
+
+  @@index([memberId, expiresAt])
+  @@map("member_pt_packages")
+}
+
+model PtSlot {
+  id          String         @id @default(uuid())
+  trainerId   String
+  startsAt    DateTime
+  endsAt      DateTime
+  isOpen      Boolean        @default(true)
+  createdAt   DateTime       @default(now())
+  trainer     TrainerProfile @relation(fields: [trainerId], references: [id])
+  bookings    PtBooking[]
+
+  @@unique([trainerId, startsAt])
+  @@index([startsAt, isOpen])
+  @@map("pt_slots")
+}
+
+model PtBooking {
+  id                String          @id @default(uuid())
+  slotId            String
+  memberId          String
+  memberPtPackageId String
+  status            BookingStatus   @default(PENDING)
+  holdKey           String?         @unique
+  note              String?
+  completedAt       DateTime?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  slot              PtSlot          @relation(fields: [slotId], references: [id])
+  member            MemberProfile   @relation(fields: [memberId], references: [id])
+  memberPtPackage   MemberPtPackage @relation(fields: [memberPtPackageId], references: [id])
+
+  @@index([slotId, status])
+  @@index([memberId, createdAt])
+  @@map("pt_bookings")
+}
+
+model Checkin {
+  id                 String           @id @default(uuid())
+  memberId           String
+  memberMembershipId String
+  idempotencyKey     String           @unique
+  checkedInAt        DateTime         @default(now())
+  recordedById       String?
+  member             MemberProfile    @relation(fields: [memberId], references: [id])
+  memberMembership   MemberMembership @relation(fields: [memberMembershipId], references: [id])
+
+  @@index([memberId, checkedInAt])
+  @@map("checkins")
+}
+
+model Order {
+  id          String      @id @default(uuid())
+  orderNumber String      @unique
+  memberId    String
+  status      OrderStatus @default(PENDING)
+  totalAmount Decimal     @db.Decimal(12, 2)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  member      User        @relation("MemberOrders", fields: [memberId], references: [id])
+  items       OrderItem[]
+  payments    Payment[]
+
+  @@index([memberId, createdAt])
+  @@map("orders")
+}
+
+model OrderItem {
+  id                String             @id @default(uuid())
+  orderId           String
+  productType       ProductType
+  productId         String
+  productName       String
+  productDescription String?
+  quantity          Int                @default(1)
+  unitPrice         Decimal            @db.Decimal(12, 2)
+  order             Order              @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  membership        MemberMembership?
+  memberPtPackage   MemberPtPackage?
+
+  @@map("order_items")
+}
+
+model Payment {
+  id            String        @id @default(uuid())
+  orderId       String
+  transactionCode String      @unique
+  amount        Decimal       @db.Decimal(12, 2)
+  method        PaymentMethod
+  status        PaymentStatus
+  confirmedById String?
+  paidAt        DateTime      @default(now())
+  order         Order         @relation(fields: [orderId], references: [id])
+  confirmedBy   User?         @relation("ConfirmedPayments", fields: [confirmedById], references: [id])
+  receipt       Receipt?
+
+  @@index([orderId, status])
+  @@map("payments")
+}
+
+model Receipt {
+  id            String   @id @default(uuid())
+  paymentId     String   @unique
+  receiptNumber String   @unique
+  issuedAt      DateTime @default(now())
+  payment       Payment  @relation(fields: [paymentId], references: [id])
+
+  @@map("receipts")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  actorId    String?
+  action     String
+  entityType String
+  entityId   String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+  actor      User?    @relation("AuditActor", fields: [actorId], references: [id])
+
+  @@index([entityType, entityId])
+  @@map("audit_logs")
+}
