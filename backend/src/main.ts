@@ -3,8 +3,11 @@ import { AppModule } from './app.module.js';
 import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import helmet from 'helmet';
+import type { RequestHandler } from 'express';
+import * as helmetModule from 'helmet';
 import { ApiExceptionFilter } from './common/api-exception.filter.js';
+
+const helmet = helmetModule.default as unknown as () => RequestHandler;
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -68,6 +71,6 @@ async function bootstrap() {
     SwaggerModule.createDocument(app, swaggerConfig),
   );
 
-  await app.listen(config.get('PORT', 3000), '0.0.0.0');
+  await app.listen(process.env.PORT ?? 3000);
 }
-await bootstrap();
+void bootstrap();
