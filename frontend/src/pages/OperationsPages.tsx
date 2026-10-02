@@ -383,22 +383,6 @@ export function CheckinPage() {
   </>
 }
 
-async function requestCameraStream(cameraId?: string) {
-  const candidates: MediaTrackConstraints[] = []
-  if (cameraId) candidates.push({ deviceId: { exact: cameraId }, width: { ideal: 1280 }, height: { ideal: 720 } })
-  candidates.push({ facingMode: { ideal: 'user' }, width: { ideal: 1280 }, height: { ideal: 720 } }, {})
-  let lastError: unknown
-  for (let index = 0; index < candidates.length; index += 1) {
-    try {
-      return { stream: await navigator.mediaDevices.getUserMedia({ video: candidates[index], audio: false }), usedFallback: index > 0 }
-    } catch (error) {
-      lastError = error
-      if (error instanceof DOMException && error.name === 'NotAllowedError') break
-    }
-  }
-  throw lastError ?? new DOMException('Không tìm thấy camera.', 'NotFoundError')
-}
-
 function CameraScanner({ onDetected, onClose }: { onDetected: (value: string) => void; onClose: () => void }) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const scannerRef = useRef<QrScanner | null>(null)
@@ -427,20 +411,6 @@ function CameraScanner({ onDetected, onClose }: { onDetected: (value: string) =>
         videoRef.current.muted = true
         videoRef.current.defaultMuted = true
         videoRef.current.setAttribute('playsinline', '')
-        const permissionStream = await requestCameraStream()
-        let availableCameras: QrScanner.Camera[] = []
-        try {
-          availableCameras = await QrScanner.listCameras()
-        } finally {
-          permissionStream.stream.getTracks().forEach((track) => track.stop())
-        }
-        const preferredCamera = availableCameras.find((camera) => !/\bIR\b|infrared|obs|virtual/i.test(camera.label)) ?? availableCameras[0]
-        setCameras(availableCameras)
-        if (preferredCamera) setSelectedCamera(preferredCamera.id)
-        const cameraStream = await requestCameraStream(preferredCamera?.id)
-        const physicalStream = cameraStream.stream
-        videoRef.current.srcObject = physicalStream
-        await videoRef.current.play()
         const scanner = new QrScanner(
           videoRef.current,
           (result) => {
@@ -453,7 +423,7 @@ function CameraScanner({ onDetected, onClose }: { onDetected: (value: string) =>
             if (active) detectedRef.current(memberCode)
           },
           {
-            preferredCamera: 'user',
+            preferredCamera: 'environment',
             maxScansPerSecond: 8,
             returnDetailedScanResult: true,
           },
@@ -464,8 +434,16 @@ function CameraScanner({ onDetected, onClose }: { onDetected: (value: string) =>
           scanner.destroy()
           return
         }
-        const trackName = physicalStream.getVideoTracks()[0]?.label || preferredCamera?.label || 'webcam mặc định'
-        if (active) setMessage(`${cameraStream.usedFallback ? 'Không mở được camera đã chọn; đang dùng ' : 'Đang dùng '}${trackName}. Đưa mã QR vào khung hình.`)
+        const availableCameras = await QrScanner.listCameras()
+        const activeTrack = videoRef.current.srcObject instanceof MediaStream
+          ? videoRef.current.srcObject.getVideoTracks()[0]
+          : undefined
+        const activeCameraId = activeTrack?.getSettings().deviceId
+        const activeCamera = availableCameras.find((camera) => camera.id === activeCameraId)
+        setCameras(availableCameras)
+        if (activeCamera) setSelectedCamera(activeCamera.id)
+        const trackName = activeTrack?.label || activeCamera?.label || 'webcam mặc định'
+        if (active) setMessage(`Đang dùng ${trackName}. Đưa mã QR vào khung hình.`)
         return () => scanner.destroy()
       } catch (error) {
         const denied = error instanceof DOMException && error.name === 'NotAllowedError'
@@ -498,14 +476,13 @@ function CameraScanner({ onDetected, onClose }: { onDetected: (value: string) =>
     try {
       const scanner = scannerRef.current
       if (!scanner || !videoRef.current) return
-      await scanner.pause(true)
-      const cameraStream = await requestCameraStream(cameraId)
-      const stream = cameraStream.stream
-      videoRef.current.srcObject = stream
-      await videoRef.current.play()
+      await scanner.setCamera(cameraId)
       await scanner.start()
-      const trackName = stream.getVideoTracks()[0]?.label || camera?.label || 'camera đã chọn'
-      setMessage(`${cameraStream.usedFallback ? 'Không mở được camera đã chọn; đang dùng ' : 'Đang dùng '}${trackName}. Đưa mã QR vào khung hình.`)
+      const activeTrack = videoRef.current.srcObject instanceof MediaStream
+        ? videoRef.current.srcObject.getVideoTracks()[0]
+        : undefined
+      const trackName = activeTrack?.label || camera?.label || 'camera đã chọn'
+      setMessage(`Đang dùng ${trackName}. Đưa mã QR vào khung hình.`)
     } catch {
       setMessage('Không thể chuyển camera. Hãy đóng camera và thử lại.')
     }
