@@ -47,5 +47,5 @@ Owner xem tổng payment PAID, phân loại phương thức, hội viên ACTIVE,
 
 ## UC-07 — Thông báo công việc
 
-Hệ thống tạo thông báo cho đúng người nhận khi có chuyển khoản chờ duyệt/kết quả duyệt, yêu cầu hoặc thay đổi lịch PT, hoàn thành/vắng mặt và đánh giá PT. Người dùng xem tối đa 50 thông báo gần nhất và đánh dấu từng thông báo hoặc tất cả là đã đọc.
+Hệ thống tạo thông báo cho đúng người nhận khi có chuyển khoản chờ duyệt/kết quả duyệt, yêu cầu hoặc thay đổi lịch PT, hoàn thành/vắng mặt và đánh giá PT. Khi mở trung tâm thông báo, hệ thống tạo một nhắc lịch chống trùng cho mỗi booking CONFIRMED bắt đầu trong 24 giờ tới. Người dùng xem tối đa 50 thông báo gần nhất và đánh dấu từng thông báo hoặc tất cả là đã đọc.
 

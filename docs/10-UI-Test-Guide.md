@@ -224,7 +224,8 @@ Lưu ý: chạy lại `npm run db:seed` sẽ đặt lại mật khẩu của cá
 1. Tạo yêu cầu chuyển khoản hoặc đặt lịch PT ở một tài khoản.
 2. Mở **Thông báo** ở tài khoản nhân viên/PT liên quan và chờ tối đa 15 giây.
 3. Xử lý yêu cầu rồi kiểm tra thông báo kết quả ở tài khoản Hội viên.
-4. Thử đánh dấu một thông báo và toàn bộ thông báo là đã đọc.
+4. Với lịch CONFIRMED bắt đầu trong 24 giờ, mở lại trang và kiểm tra chỉ có một thông báo nhắc lịch dù tải lại nhiều lần.
+5. Thử đánh dấu một thông báo và toàn bộ thông báo là đã đọc.
 
 Kết quả mong đợi: chỉ đúng người nhận thấy thông báo; số chưa đọc giảm đúng và thời gian hiển thị theo giờ Việt Nam.
 

@@ -31,7 +31,7 @@ Ngoài phạm vi: thanh toán thật, hóa đơn điện tử, kế toán thuế
 | FR-12 | UI hiển thị thông báo tiếng Việt tại thao tác và vô hiệu hóa nút khi đang gửi. |
 | FR-13 | Người dùng xem/cập nhật hồ sơ và đổi mật khẩu sau khi xác nhận mật khẩu hiện tại. |
 | FR-14 | Chỉ Member có booking COMPLETED được đánh giá PT một lần; hiển thị điểm trung bình và số lượt đánh giá. |
-| FR-15 | Người dùng nhận thông báo trong ứng dụng về thanh toán, lịch PT và đánh giá liên quan. |
+| FR-15 | Người dùng nhận thông báo trong ứng dụng về thanh toán, lịch PT, đánh giá và nhắc lịch PT trong 24 giờ trước ca. |
 | FR-16 | Owner xem đối soát tiền mặt theo ngày, doanh thu theo người xác nhận, hiệu suất PT và audit log. |
 
 ## 4. Yêu cầu phi chức năng
