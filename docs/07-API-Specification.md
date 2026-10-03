@@ -17,14 +17,20 @@ Base URL: `/api`. Endpoint bảo vệ dùng `Authorization: Bearer <JWT>`. Swagg
 | POST/PATCH | `/catalog/*` | Owner |
 | GET/POST | `/orders` | Authenticated; create là Member |
 | POST | `/orders/:id/pay` | Owner/Receptionist hoặc chủ đơn theo policy |
+| PATCH | `/orders/:orderId/payments/:paymentId/confirm` | Owner, Receptionist |
+| PATCH | `/orders/:orderId/payments/:paymentId/reject` | Owner, Receptionist; bắt buộc lý do |
 | PATCH | `/orders/:id/cancel` | Staff hoặc chủ đơn |
 | GET | `/orders/:id/receipt` | Staff hoặc chủ đơn PAID |
-| GET/POST | `/operations/slots` | GET mọi role; POST Trainer |
+| GET/POST | `/operations/slots` | GET mọi role, hỗ trợ `from/to/sort`; POST Trainer |
 | PATCH | `/operations/slots/:id/close` | Trainer sở hữu hoặc Owner; chỉ slot chưa có lịch hoạt động |
 | GET/POST | `/operations/bookings` | Theo scope role |
 | PATCH | `/operations/bookings/:id/status` | Trainer sở hữu hoặc Member hủy của mình |
+| POST | `/operations/bookings/:id/review` | Member sở hữu booking COMPLETED |
 | GET/POST | `/operations/checkins` | Theo scope role |
 | GET | `/reports/dashboard` | Owner |
+| GET | `/reports/operations` | Owner |
+| GET | `/notifications` | Authenticated, dữ liệu của mình |
+| PATCH | `/notifications/:id/read`, `/notifications/read-all` | Chính tài khoản |
 
 Response thành công: `{ "success": true, "data": ..., "message": "..." }`.
 

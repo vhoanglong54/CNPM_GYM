@@ -92,7 +92,7 @@ Kết quả mong đợi:
 
 ### 4.2 Xác nhận thanh toán tại quầy
 
-1. Trên máy B, tìm đơn vừa tạo và chọn **Xác nhận thu**.
+1. Trên máy B, tìm đơn chưa có yêu cầu chuyển khoản và chọn **Thu tiền mặt**.
 2. Xác nhận hộp thoại.
 3. Quan sát tiến trình chuyển từ **Đang chờ** sang **Hoàn tất**.
 4. Trên máy A chờ tối đa 5 giây; trạng thái phải đổi thành **Đã thanh toán**.
@@ -104,15 +104,19 @@ Kết quả mong đợi:
 - Hệ thống chỉ tạo một khoản thanh toán và một phiếu thu.
 - Đơn chuyển sang **Đã thanh toán** và không còn nút thanh toán/hủy.
 - Gói Gym hoặc số buổi PT được kích hoạt tự động.
+- Phiếu thu ghi đúng họ tên, email, vai trò và thời gian của tài khoản Lễ tân/Chủ phòng xác nhận.
 - Dashboard Chủ phòng cập nhật tổng giao dịch và doanh thu.
 
-### 4.3 Hội viên tự xác nhận chuyển khoản
+### 4.3 Hội viên gửi yêu cầu xác nhận chuyển khoản
 
 1. Tạo một đơn khác bằng tài khoản Hội viên.
-2. Tại **Giao dịch**, Hội viên chọn **Thanh toán**.
-3. Lễ tân/Chủ phòng quan sát trạng thái cập nhật.
+2. Tại **Giao dịch**, Hội viên chọn **Tôi đã chuyển khoản**.
+3. Kiểm tra Order vẫn chờ, giao diện hiện **Chờ nhân viên duyệt**, chưa có Phiếu thu và chưa kích hoạt gói.
+4. Lễ tân/Chủ phòng mở **Giao dịch** và chọn **Xác nhận CK** hoặc **Từ chối**.
+5. Nếu từ chối, nhập lý do tối thiểu 3 ký tự; Hội viên kiểm tra lý do rồi gửi lại yêu cầu.
+6. Nếu xác nhận, Hội viên kiểm tra trạng thái PAID, quyền lợi và Phiếu thu.
 
-Kết quả mong đợi: luồng trạng thái và quyền lợi giống mục 4.2. Hệ thống hiện chỉ ghi nhận giao dịch nội bộ, chưa kết nối cổng ngân hàng thật.
+Kết quả mong đợi: chỉ Lễ tân/Chủ phòng có thể chuyển giao dịch sang PAID; yêu cầu quá 48 giờ thành hết hạn; hệ thống hiện chỉ ghi nhận nội bộ, chưa kết nối cổng ngân hàng thật.
 
 ### 4.4 Hủy đơn
 
@@ -139,14 +143,16 @@ Kết quả mong đợi: chỉ PT có thể tạo ca của chính mình; thời 
 ### 5.2 Hội viên đặt lịch
 
 1. Ở máy khác đăng nhập `hoangnam@gym.local`.
-2. Vào **Lịch PT**, chọn một ca trống.
-3. Chọn gói `PT 12 Buổi`, nhập ghi chú nếu cần và gửi yêu cầu.
+2. Vào **Lịch PT**, chọn ngày muốn tập và thử sắp xếp theo **Lịch trống sớm nhất**, **Đánh giá cao nhất** hoặc **Nhiều lượt đánh giá nhất**.
+3. Chọn một ca trống, chọn gói `PT 12 Buổi`, nhập ghi chú nếu cần và gửi yêu cầu.
 4. Quay lại máy PT và bấm làm mới trang nếu cần.
 
 Kết quả mong đợi:
 
 - Lịch ở trạng thái **Chờ xác nhận**.
+- Gói PT tăng **đang giữ** một buổi và giảm **khả dụng** một buổi, nhưng chưa tăng số buổi đã dùng.
 - Ca đã chọn không còn nhận thêm lịch đặt trùng.
+- Hội viên không thể đặt một ca khác bị trùng giờ hoặc vượt số buổi khả dụng.
 - PT nhìn thấy tên hội viên, ca và ghi chú.
 
 ### 5.3 PT xác nhận và hoàn thành
@@ -155,12 +161,13 @@ Kết quả mong đợi:
 2. Hội viên kiểm tra trạng thái đổi thành **Đã xác nhận**.
 3. PT chọn **Hoàn thành** sau buổi tập.
 4. Hội viên mở **Hồ sơ** và kiểm tra số buổi còn lại giảm một.
+5. Hội viên chọn **Đánh giá**, nhập 1–5 sao và nhận xét tùy chọn; kiểm tra điểm/số lượt của PT trên ca trống.
 
-Kết quả mong đợi: trạng thái đi đúng thứ tự `Chờ xác nhận → Đã xác nhận → Hoàn thành`; một lịch không thể hoàn thành hai lần.
+Kết quả mong đợi: trạng thái đi đúng thứ tự `Chờ xác nhận → Đã xác nhận → Hoàn thành`; một lịch không thể hoàn thành hai lần hoặc đánh giá hai lần. PT có thể **Từ chối** kèm lý do; yêu cầu bị từ chối hoàn buổi đang giữ.
 
 ### 5.4 Hủy lịch
 
-Tạo một lịch khác rồi hủy từ tài khoản được phép. Kết quả mong đợi là trạng thái **Đã hủy**, ca được xử lý theo quy tắc của hệ thống và số buổi chưa bị trừ nếu lịch chưa hoàn thành.
+Tạo một lịch khác rồi hủy từ tài khoản được phép. Kết quả mong đợi là trạng thái **Đã hủy**, lý do được hiển thị và buổi đang giữ được hoàn. Hội viên không thể hủy lịch đã xác nhận khi còn dưới 4 giờ. Sau khi ca kết thúc, PT có thể chọn **Vắng mặt**; trường hợp này vẫn trừ một buổi.
 
 ## 6. Luồng check-in
 
@@ -212,13 +219,31 @@ Kết quả mong đợi: lỗi nhập liệu được báo rõ; đổi thành c�
 
 Lưu ý: chạy lại `npm run db:seed` sẽ đặt lại mật khẩu của các tài khoản mẫu về `SEED_PASSWORD`.
 
+### 8.1 Thông báo công việc
+
+1. Tạo yêu cầu chuyển khoản hoặc đặt lịch PT ở một tài khoản.
+2. Mở **Thông báo** ở tài khoản nhân viên/PT liên quan và chờ tối đa 15 giây.
+3. Xử lý yêu cầu rồi kiểm tra thông báo kết quả ở tài khoản Hội viên.
+4. Thử đánh dấu một thông báo và toàn bộ thông báo là đã đọc.
+
+Kết quả mong đợi: chỉ đúng người nhận thấy thông báo; số chưa đọc giảm đúng và thời gian hiển thị theo giờ Việt Nam.
+
+### 8.2 Báo cáo và đối soát
+
+1. Đăng nhập Chủ phòng và mở **Báo cáo**.
+2. Đối chiếu số chuyển khoản chờ duyệt với trang **Giao dịch**.
+3. Thực hiện một giao dịch tiền mặt rồi kiểm tra bảng **Tiền mặt hôm nay**, người thu và tổng tiền.
+4. Đối chiếu doanh thu theo người xác nhận, trạng thái/điểm PT và nhật ký thao tác gần đây.
+
+Kết quả mong đợi: chỉ Chủ phòng truy cập được; doanh thu chỉ lấy Payment PAID và đối soát ngày theo `Asia/Ho_Chi_Minh`.
+
 ## 9. Kiểm thử đồng thời trên nhiều máy
 
 Kịch bản nhanh:
 
 1. Mỗi máy mở [https://titan-gym-web.vercel.app](https://titan-gym-web.vercel.app); không cần một máy đóng vai trò máy chủ.
 2. Máy A đăng nhập Hội viên, máy B đăng nhập Lễ tân, máy C đăng nhập Chủ phòng, máy D đăng nhập PT.
-3. Máy A tạo đơn; B/C nhìn thấy đơn chờ và một trong hai máy xác nhận thu.
+3. Máy A tạo đơn, báo đã chuyển khoản; B/C nhìn thấy yêu cầu chờ và một trong hai máy xác nhận.
 4. A nhìn thấy đơn hoàn tất và quyền lợi mới.
 5. D mở ca PT; A (với tài khoản có gói PT) đặt lịch; D xác nhận.
 6. B check-in một hội viên; C quan sát dashboard/lịch sử.

@@ -13,19 +13,23 @@ Ngoại lệ: email trùng (BR-01), OTP sai/hết hạn/đã dùng (BR-03), gử
 
 1. Member chọn sản phẩm đang bán và tạo Order `PENDING`.
 2. OrderItem snapshot tên, mô tả và đơn giá.
-3. Member chọn `TRANSFER_DEMO`, hoặc nhân viên chọn `CASH` tại quầy.
-4. Transaction tạo Payment/Receipt, chuyển Order sang `PAID`, kích hoạt đúng quyền lợi.
-5. Member/nhân viên xem PDF; Owner thấy tổng thu cập nhật.
+3. Member chọn **Tôi đã chuyển khoản** → Payment `AWAITING_CONFIRMATION`, Order vẫn `PENDING`, chưa cấp quyền lợi/receipt.
+4. Lễ tân/Chủ phòng xác nhận hoặc từ chối kèm lý do. Yêu cầu tự hết hạn sau 48 giờ.
+5. Với tiền mặt, Lễ tân/Chủ phòng chọn **Thu tiền mặt** và xác nhận trực tiếp.
+6. Chỉ khi được xác nhận, transaction chuyển Payment/Order sang `PAID`, kích hoạt quyền lợi, tạo Receipt và lưu tài khoản xác nhận.
+7. Member/nhân viên xem PDF; Owner thấy tổng thu và đối soát cập nhật.
 
 Ngoại lệ: gói ngừng bán, đơn rỗng/hủy, xác nhận lặp, sai vai trò/phương thức.
 
 ## UC-03 — Booking PT
 
 1. Trainer mở khung giờ rảnh; có thể đóng lại nếu chưa có booking hoạt động.
-2. Member chọn khung giờ, chọn một gói PT còn lượt và gửi lời nhắn tùy chọn cho Trainer.
-3. Booking ở trạng thái `PENDING`; Trainer xem lời nhắn và chuyển sang `CONFIRMED` hoặc hủy.
-4. Sau buổi tập, Trainer chuyển booking sang `COMPLETED`; hệ thống trừ đúng một buổi trong transaction.
-5. Member hoặc Trainer có thể hủy trước giờ bắt đầu; booking chuyển `CANCELLED`, giải phóng slot và không trừ lượt.
+2. Member lọc ngày, sắp xếp PT theo lịch sớm/đánh giá, chọn gói còn **buổi khả dụng** và gửi yêu cầu.
+3. Transaction tạo booking `PENDING`, giữ một buổi PT và chặn trùng lịch của slot lẫn Hội viên.
+4. Trainer chuyển sang `CONFIRMED` hoặc `REJECTED` kèm lý do; từ chối hoàn buổi đang giữ.
+5. Sau buổi tập, Trainer chọn `COMPLETED` hoặc `NO_SHOW`; cả hai tiêu thụ một buổi đã giữ theo chính sách.
+6. Hủy hợp lệ chuyển `CANCELLED`, giải phóng slot và hoàn buổi; Hội viên phải hủy lịch đã xác nhận trước ít nhất 4 giờ.
+7. Với booking `COMPLETED`, Hội viên được đánh giá PT 1–5 sao đúng một lần.
 
 Giao diện hiển thị thống kê, bộ lọc và nhãn trạng thái tiếng Việt theo đúng phạm vi của từng vai trò.
 
@@ -39,5 +43,9 @@ Owner tạo Receptionist/Trainer, xem danh sách và khóa/mở tài khoản. Ow
 
 ## UC-06 — Dashboard Owner
 
-Owner xem tổng payment PAID, phân loại phương thức, hội viên ACTIVE, quyền lợi Gym hợp lệ, check-in, booking đang mở, đơn PENDING và giao dịch gần nhất.
+Owner xem tổng payment PAID, phân loại phương thức, hội viên ACTIVE, quyền lợi Gym hợp lệ, check-in, booking đang mở, đơn PENDING và giao dịch gần nhất. Màn hình **Báo cáo** bổ sung tiền mặt trong ngày, doanh thu theo tài khoản xác nhận, trạng thái PT, điểm PT và audit log.
+
+## UC-07 — Thông báo công việc
+
+Hệ thống tạo thông báo cho đúng người nhận khi có chuyển khoản chờ duyệt/kết quả duyệt, yêu cầu hoặc thay đổi lịch PT, hoàn thành/vắng mặt và đánh giá PT. Người dùng xem tối đa 50 thông báo gần nhất và đánh dấu từng thông báo hoặc tất cả là đã đọc.
 
