@@ -663,7 +663,7 @@ export class OrdersService {
         'RECEIPT_NOT_AVAILABLE',
         'Chưa thể xuất phiếu thu cho đơn hàng này.',
       );
-    if (!payment.paidAt || !payment.confirmedAt || !payment.confirmedBy)
+    if (!payment.paidAt || !payment.confirmedAt)
       throw new ApiError(
         'RECEIPT_CONFIRMATION_MISSING',
         'Giao dịch chưa có đầy đủ thông tin xác nhận để xuất phiếu thu.',
@@ -674,7 +674,7 @@ export class OrdersService {
   async streamReceipt(orderId: string, user: AuthUser, response: Response) {
     const data = await this.receipt(orderId, user);
     const payment = data.payment;
-    if (!payment.paidAt || !payment.confirmedAt || !payment.confirmedBy)
+    if (!payment.paidAt || !payment.confirmedAt)
       throw new ApiError(
         'RECEIPT_CONFIRMATION_MISSING',
         'Giao dịch chưa có đầy đủ thông tin xác nhận để xuất phiếu thu.',
@@ -701,15 +701,20 @@ export class OrdersService {
     doc.text(
       `Phương thức: ${payment.method === PaymentMethod.CASH ? 'Tiền mặt' : 'Chuyển khoản'}`,
     );
-    const confirmerRole = payment.confirmedBy.roles.some(
-      (item) => item.role.code === RoleCode.OWNER,
-    )
-      ? 'Chủ phòng'
-      : 'Lễ tân';
-    doc.text(
-      `Người xác nhận: ${payment.confirmedBy.fullName} (${confirmerRole})`,
-    );
-    doc.text(`Tài khoản xác nhận: ${payment.confirmedBy.email}`);
+    if (payment.confirmedBy) {
+      const confirmerRole = payment.confirmedBy.roles.some(
+        (item) => item.role.code === RoleCode.OWNER,
+      )
+        ? 'Chủ phòng'
+        : 'Lễ tân';
+      doc.text(
+        `Người xác nhận: ${payment.confirmedBy.fullName} (${confirmerRole})`,
+      );
+      doc.text(`Tài khoản xác nhận: ${payment.confirmedBy.email}`);
+    } else {
+      doc.text('Người xác nhận: Không ghi nhận (giao dịch dữ liệu cũ)');
+      doc.text('Tài khoản xác nhận: Không có dữ liệu');
+    }
     doc.text(
       `Thời gian xác nhận: ${formatAppDateTime(payment.confirmedAt)}`,
     );
