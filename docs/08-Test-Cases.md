@@ -2,7 +2,7 @@
 
 | TC | Tình huống | Kết quả |
 |---|---|---|
-| TC-01 | Đăng ký email trùng | 409 `EMAIL_ALREADY_EXISTS`, không tạo user. |
+| TC-01 | Đăng ký email trùng | Nếu User ACTIVE/INACTIVE: 409 `EMAIL_ALREADY_EXISTS`; nếu còn UNVERIFIED: cập nhật đăng ký và cấp/gợi ý gửi lại OTP, không tạo User thứ hai. |
 | TC-02 | OTP sai/hết hạn/lần 6 | `OTP_INVALID`, User vẫn UNVERIFIED. |
 | TC-03 | Member gọi dashboard Owner | 403, không trả dữ liệu. |
 | TC-04 | Tạo gói giá 0/âm | Validation 400, không ghi DB. |
@@ -28,6 +28,7 @@
 | TC-24 | PT đánh dấu NO_SHOW sau giờ kết thúc | Trừ một buổi, trạng thái NO_SHOW. |
 | TC-25 | Đánh giá trước hoàn thành hoặc đánh giá lần hai | Bị từ chối; chỉ một review 1–5/booking COMPLETED. |
 | TC-26 | Check-in quanh 00:00 Việt Nam trên server UTC | Phân ngày theo `Asia/Ho_Chi_Minh`. |
+| TC-27 | Hội viên quay lại sau khi đã check-in trong ngày | 409 `CHECKIN_ALREADY_TODAY`; không tạo bản ghi/trừ lượt lần hai, Lễ tân vẫn có thể cho khách qua. |
 
 Automated hiện kiểm tra health/controller cơ bản và ranh giới ngày `Asia/Ho_Chi_Minh`; toàn bộ TC nghiệp vụ trên cần được chạy lại với database test hoặc theo `docs/10-UI-Test-Guide.md` sau mỗi migration/deploy.
 

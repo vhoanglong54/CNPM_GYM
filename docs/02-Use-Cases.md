@@ -35,7 +35,7 @@ Giao diện hiển thị thống kê, bộ lọc và nhãn trạng thái tiếng
 
 ## UC-04 — Check-in
 
-Hội viên xuất trình QR → Lễ tân/Chủ phòng quét hoặc nhập mã → API trả các gói Gym đang hiệu lực và gói đề xuất → nhân viên xác nhận gói áp dụng → API kiểm tra lại quyền lợi → tạo Checkin. Cùng hội viên không được ghi nhận hai lần trong một ngày.
+Hội viên xuất trình QR → Lễ tân/Chủ phòng quét hoặc nhập mã → API trả các gói Gym đang hiệu lực và gói đề xuất → nhân viên xác nhận gói áp dụng → API kiểm tra lại quyền lợi → tạo Checkin. Cùng Hội viên không được ghi nhận hai lần trong một ngày; khi khách quay lại, thông báo đã check-in là đủ để Lễ tân cho qua và không phát sinh lượt/trừ quyền lợi mới.
 
 ## UC-05 — Quản trị nhân sự
 

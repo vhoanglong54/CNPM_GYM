@@ -23,8 +23,12 @@ Schema chính thức tại `backend/prisma/schema.prisma`, migration tại `back
 - `PtBooking.holdKey` unique khi PENDING/CONFIRMED, trả về null lúc REJECTED/CANCELLED/COMPLETED/NO_SHOW.
 - `TrainerReview.bookingId` unique và rating có check 1–5; mỗi booking hoàn thành chỉ có một đánh giá.
 - Payment lưu `requestedAt`, `expiresAt`, `confirmedAt`, `confirmedById`, thời điểm/lý do từ chối; Receipt chỉ gắn Payment PAID.
+- Notification có `dedupeKey` nullable/unique; nhắc lịch PT dùng khóa này để không tạo lặp khi tải lại.
+- `Checkin.recordedById` hiện là UUID scalar phục vụ truy vết, chưa khai báo relation Prisma đến `User`; `memberId` và `memberMembershipId` có foreign key.
 - Quan hệ tài chính không cascade delete; OrderItem cascade theo Order, role/token cascade theo User.
 - Index cho email token, membership, booking, check-in, order, payment và audit lookup.
+
+Các enum trạng thái chính là `UserStatus`, `OrderStatus`, `PaymentStatus`, `PaymentMethod` và `BookingStatus`. Ứng dụng ghi/đọc `Date` theo UTC và dùng helper để quy đổi ranh giới ngày, hiển thị theo `Asia/Ho_Chi_Minh`.
 
 ## Quan hệ khái niệm
 
@@ -32,22 +36,37 @@ Schema chính thức tại `backend/prisma/schema.prisma`, migration tại `back
 erDiagram
   User ||--o{ UserRole : has
   Role ||--o{ UserRole : grants
+  User ||--o{ EmailVerificationToken : verifies
   User ||--o| MemberProfile : owns
   User ||--o| TrainerProfile : owns
+  User ||--o{ Order : places
+  User ||--o{ Payment : confirms
+  User ||--o{ PtBooking : resolves
+  User ||--o{ Notification : receives
+  User ||--o{ AuditLog : acts
+
   MemberProfile ||--o{ MemberMembership : receives
   MembershipPlan ||--o{ MemberMembership : activates
+  OrderItem ||--o| MemberMembership : creates
+  MemberMembership ||--o{ Checkin : applies
+  MemberProfile ||--o{ Checkin : records
+
   MemberProfile ||--o{ MemberPtPackage : receives
   PtPackage ||--o{ MemberPtPackage : activates
+  OrderItem ||--o| MemberPtPackage : creates
+
   TrainerProfile ||--o{ PtSlot : opens
   PtSlot ||--o{ PtBooking : contains
   MemberProfile ||--o{ PtBooking : books
+  MemberPtPackage ||--o{ PtBooking : funds
   TrainerProfile ||--o{ TrainerReview : receives
+  MemberProfile ||--o{ TrainerReview : writes
   PtBooking ||--o| TrainerReview : verifies
-  User ||--o{ Order : places
+
   Order ||--o{ OrderItem : snapshots
   Order ||--o{ Payment : paid_by
   Payment ||--o| Receipt : issues
-  MemberProfile ||--o{ Checkin : records
-  User ||--o{ Notification : receives
 ```
+
+Quan hệ chỉ mang tính khái niệm trong sơ đồ trên nhưng khớp schema hiện tại. Riêng `Checkin.recordedById` không vẽ thành quan hệ vì database hiện chưa có foreign key tương ứng.
 

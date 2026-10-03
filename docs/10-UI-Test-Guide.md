@@ -63,7 +63,7 @@ Dữ liệu mẫu gồm 3 gói Gym (1, 2, 3 tháng), 3 gói PT (8, 12, 24 buổi
 
 Kết quả mong đợi:
 
-- Email đã tồn tại báo rõ lỗi và không tạo bản ghi trùng.
+- Email của tài khoản ACTIVE/INACTIVE báo đã tồn tại. Email của đăng ký còn UNVERIFIED tiếp tục đăng ký cũ và cấp/gợi ý gửi lại OTP; cả hai trường hợp đều không tạo User trùng.
 - OTP đúng kích hoạt tài khoản; OTP sai hoặc hết hạn bị từ chối.
 - Sau khi đăng nhập, người dùng chỉ thấy menu dành cho Hội viên.
 
@@ -188,6 +188,7 @@ Kết quả mong đợi:
 - Lượt check-in gắn đúng với gói đã hiển thị ở bước xác nhận; gói thời hạn giữ nguyên ngày hết hạn.
 - Mã sai hoặc không có quyền lợi hợp lệ bị từ chối rõ ràng.
 - Mỗi hội viên chỉ được ghi nhận một lần trong cùng ngày, tránh tăng sai số ngày tập hoặc trừ nhiều lượt.
+- Nếu Hội viên quay lại trong ngày, giao diện báo đã check-in; Lễ tân có thể cho khách qua nhưng hệ thống không tạo bản ghi hoặc trừ lượt lần hai.
 - Hội viên chỉ hiển thị QR và lịch sử của mình; chỉ Lễ tân/Chủ phòng có quyền ghi nhận check-in.
 
 ## 7. Quản lý gói, hội viên và nhân sự

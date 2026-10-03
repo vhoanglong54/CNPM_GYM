@@ -23,7 +23,7 @@ Kịch bản thao tác production theo từng vai trò nằm tại [docs/10-UI-T
 
 ## Chạy dự án trên máy hiện tại để demo
 
-Các dependency, file `.env`, migration và dữ liệu mẫu đã được chuẩn bị trên máy này. Mỗi lần cần demo, mở Docker Desktop, mở PowerShell tại thư mục `D:\QuanLyPhongGym` và chạy đúng hai lệnh:
+Các dependency, file `.env`, migration và dữ liệu mẫu đã được chuẩn bị trên máy này. Mỗi lần cần demo, mở Docker Desktop, mở PowerShell tại thư mục `D:\QuanLyPhongGym` và chạy các lệnh sau:
 
 ```powershell
 docker compose up -d   # Bật PostgreSQL; chạy lặp lại lệnh này vẫn an toàn
@@ -90,7 +90,7 @@ Development mặc định dùng OTP dự phòng `123456`. Để gửi Gmail th�
 - Gói Gym thống nhất theo thời hạn: **1 tháng (30 ngày), 2 tháng (60 ngày), 3 tháng (90 ngày)**.
 - Thời hạn tính liên tục từ lúc kích hoạt. Nếu gia hạn khi gói cũ còn hiệu lực, gói mới bắt đầu sau thời điểm kết thúc cuối cùng nên không bị chồng ngày.
 - Check-in ghi nhận ngày đến tập và gắn rõ với gói Gym được Lễ tân/Chủ phòng chọn; mỗi hội viên chỉ được ghi nhận một lần trong ngày.
-- Gói PT tính theo số buổi. Chỉ khi PT đánh dấu lịch là **Hoàn thành** thì hệ thống mới trừ một buổi.
+- Gói PT tính theo số buổi. Booking giữ một buổi ngay từ lúc `PENDING`; **Hoàn thành** hoặc **Vắng mặt** chuyển buổi đang giữ thành đã dùng, còn **Từ chối/Hủy** hoàn lại buổi đang giữ.
 
 ## Ý nghĩa các lệnh
 
@@ -113,7 +113,16 @@ docker compose ps
 npm run dev
 ```
 
-Không commit `.env`. Schema và migration nằm tại `backend/prisma/`. Bộ tài liệu kỹ thuật nằm trong `docs/`.
+Không commit `.env`. Schema và migration nằm tại `backend/prisma/`.
+
+## Bộ tài liệu kỹ thuật
+
+| Nhóm | Tài liệu |
+|---|---|
+| Yêu cầu và nghiệp vụ | [SRS](docs/01-SRS.md), [Use Cases](docs/02-Use-Cases.md), [Business Rules](docs/03-Business-Rules.md), [RBAC](docs/04-RBAC-Matrix.md) |
+| Thiết kế | [Database](docs/05-Database-Design.md), [Architecture](docs/06-UML-Diagrams/Architecture.md), [Sequence Diagram](docs/06-UML-Diagrams/Sequences.md), [Collaboration Diagram](docs/06-UML-Diagrams/Collaboration.md) |
+| API và kiểm thử | [API Specification](docs/07-API-Specification.md), [Test Cases](docs/08-Test-Cases.md), [UI Test Guide](docs/10-UI-Test-Guide.md) |
+| Triển khai | [Vercel Deployment](docs/11-Vercel-Deployment.md) |
 
 ## Chạy song song trên nhiều máy trong mạng LAN
 
