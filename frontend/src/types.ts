@@ -73,7 +73,7 @@ export interface Profile {
     id: string
     memberCode: string
     memberships: Array<{ id: string; startDate: string; visitsTotal?: number; visitsUsed: number; endDate?: string; isPaused: boolean; plan: MembershipPlan }>
-    ptPackages: Array<{ id: string; sessionsTotal: number; sessionsUsed: number; expiresAt?: string; package: PtPackage }>
+    ptPackages: Array<{ id: string; sessionsTotal: number; sessionsUsed: number; sessionsReserved: number; expiresAt?: string; package: PtPackage }>
   }
   trainerProfile?: { id: string; trainerCode: string; specialties?: string }
 }

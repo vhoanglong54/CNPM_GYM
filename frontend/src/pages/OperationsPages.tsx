@@ -10,6 +10,7 @@ import {
   MessageSquareText,
   Plus,
   ScanLine,
+  Star,
   UserRound,
   X,
   XCircle,
@@ -21,21 +22,23 @@ import { useAuth } from '../context/AuthContext'
 import { api, getErrorMessage } from '../lib/api'
 import type { ApiResponse, Profile } from '../types'
 
-type BookingStatus = 'PENDING' | 'CONFIRMED' | 'COMPLETED' | 'CANCELLED'
+type BookingStatus = 'PENDING' | 'CONFIRMED' | 'COMPLETED' | 'REJECTED' | 'CANCELLED' | 'NO_SHOW'
 type BookingFilter = 'ACTIVE' | 'ALL' | BookingStatus
+type SlotSort = 'SOONEST' | 'RATING' | 'REVIEW_COUNT'
 
 interface Slot {
   id: string
   startsAt: string
   endsAt: string
   bookings: Array<{ id: string; status: BookingStatus }>
-  trainer: { id: string; user: { fullName: string } }
+  trainer: { id: string; user: { fullName: string }; rating: { average?: number; count: number } }
 }
 
 interface Booking {
   id: string
   status: BookingStatus
   note?: string
+  resolutionReason?: string
   slot: {
     startsAt: string
     endsAt: string
@@ -43,6 +46,7 @@ interface Booking {
   }
   member: { user: { fullName: string; email: string } }
   memberPtPackage: { package: { name: string } }
+  review?: { rating: number; comment?: string }
 }
 
 interface Checkin {
@@ -71,7 +75,9 @@ const statusLabels: Record<BookingStatus, string> = {
   PENDING: 'Chờ PT xác nhận',
   CONFIRMED: 'Đã xác nhận',
   COMPLETED: 'Đã hoàn thành',
+  REJECTED: 'Bị từ chối',
   CANCELLED: 'Đã hủy',
+  NO_SHOW: 'Vắng mặt',
 }
 
 const filterLabels: Array<{ value: BookingFilter; label: string }> = [
@@ -80,7 +86,9 @@ const filterLabels: Array<{ value: BookingFilter; label: string }> = [
   { value: 'PENDING', label: 'Chờ xác nhận' },
   { value: 'CONFIRMED', label: 'Đã xác nhận' },
   { value: 'COMPLETED', label: 'Hoàn thành' },
+  { value: 'REJECTED', label: 'Bị từ chối' },
   { value: 'CANCELLED', label: 'Đã hủy' },
+  { value: 'NO_SHOW', label: 'Vắng mặt' },
 ]
 
 export function SchedulePage() {
@@ -93,26 +101,38 @@ export function SchedulePage() {
   const [selectedPackageId, setSelectedPackageId] = useState('')
   const [bookingNote, setBookingNote] = useState('')
   const [filter, setFilter] = useState<BookingFilter>('ACTIVE')
+  const [slotDate, setSlotDate] = useState('')
+  const [slotSort, setSlotSort] = useState<SlotSort>('SOONEST')
   const [busy, setBusy] = useState('')
   const trainer = user?.roles.includes('TRAINER')
   const member = user?.roles.includes('MEMBER')
 
-  const load = () => Promise.all([
-    api.get<ApiResponse<Slot[]>>('/operations/slots'),
-    api.get<ApiResponse<Booking[]>>('/operations/bookings'),
-    api.get<ApiResponse<Profile>>('/users/me/profile'),
-  ]).then(([slotResponse, bookingResponse, profileResponse]) => {
-    setSlots(slotResponse.data.data)
-    setBookings(bookingResponse.data.data)
-    setProfile(profileResponse.data.data)
-  }).catch((error) => toast.error(getErrorMessage(error)))
+  const load = () => {
+    const params = new URLSearchParams({ sort: slotSort })
+    if (slotDate) {
+      const from = new Date(`${slotDate}T00:00:00`)
+      const to = new Date(from)
+      to.setDate(to.getDate() + 1)
+      params.set('from', from.toISOString())
+      params.set('to', to.toISOString())
+    }
+    return Promise.all([
+      api.get<ApiResponse<Slot[]>>(`/operations/slots?${params.toString()}`),
+      api.get<ApiResponse<Booking[]>>('/operations/bookings'),
+      api.get<ApiResponse<Profile>>('/users/me/profile'),
+    ]).then(([slotResponse, bookingResponse, profileResponse]) => {
+      setSlots(slotResponse.data.data)
+      setBookings(bookingResponse.data.data)
+      setProfile(profileResponse.data.data)
+    }).catch((error) => toast.error(getErrorMessage(error)))
+  }
 
-  /* oxlint-disable-next-line react-hooks/exhaustive-deps -- load is reused after mutations */
-  useEffect(() => { void load() }, [])
+  /* oxlint-disable-next-line react-hooks/exhaustive-deps -- filters intentionally trigger a fresh server query */
+  useEffect(() => { void load() }, [slotDate, slotSort])
 
   const eligiblePackages = useMemo(() => (
     profile?.memberProfile?.ptPackages?.filter((item) => (
-      item.sessionsUsed < item.sessionsTotal &&
+      item.sessionsUsed + item.sessionsReserved < item.sessionsTotal &&
       (!item.expiresAt || new Date(item.expiresAt) >= new Date())
     )) ?? []
   ), [profile])
@@ -160,10 +180,42 @@ export function SchedulePage() {
   }
 
   const updateBooking = async (id: string, status: BookingStatus) => {
-    if (status === 'CANCELLED' && !window.confirm('Bạn chắc chắn muốn hủy lịch PT này?')) return
+    let reason: string | undefined
+    if (status === 'CANCELLED' || status === 'REJECTED' || status === 'NO_SHOW') {
+      const label = status === 'REJECTED' ? 'từ chối' : status === 'NO_SHOW' ? 'đánh dấu vắng mặt' : 'hủy'
+      const input = window.prompt(`Nhập lý do ${label} lịch PT:`)
+      if (input === null) return
+      if (input.trim().length < 3) {
+        toast.error('Vui lòng nhập lý do rõ ràng.')
+        return
+      }
+      reason = input.trim()
+    }
     setBusy(id)
     try {
-      const { data } = await api.patch<ApiResponse<unknown>>(`/operations/bookings/${id}/status`, { status })
+      const { data } = await api.patch<ApiResponse<unknown>>(`/operations/bookings/${id}/status`, { status, reason })
+      toast.success(data.message)
+      await load()
+    } catch (error) {
+      toast.error(getErrorMessage(error))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  const reviewBooking = async (booking: Booking) => {
+    const ratingInput = window.prompt('Chấm điểm PT từ 1 đến 5 sao:')
+    if (ratingInput === null) return
+    const rating = Number(ratingInput)
+    if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+      toast.error('Điểm đánh giá phải là số nguyên từ 1 đến 5.')
+      return
+    }
+    const comment = window.prompt('Nhận xét về PT (có thể để trống):')
+    if (comment === null) return
+    setBusy(booking.id)
+    try {
+      const { data } = await api.post<ApiResponse<unknown>>(`/operations/bookings/${booking.id}/review`, { rating, comment: comment.trim() || undefined })
       toast.success(data.message)
       await load()
     } catch (error) {
@@ -189,7 +241,7 @@ export function SchedulePage() {
 
   const activeCount = bookings.filter((item) => ['PENDING', 'CONFIRMED'].includes(item.status)).length
   const completedCount = bookings.filter((item) => item.status === 'COMPLETED').length
-  const remainingSessions = eligiblePackages.reduce((total, item) => total + item.sessionsTotal - item.sessionsUsed, 0)
+  const remainingSessions = eligiblePackages.reduce((total, item) => total + item.sessionsTotal - item.sessionsUsed - item.sessionsReserved, 0)
 
   return <>
     <section className="hero-row visual-hero schedule-hero">
@@ -217,6 +269,11 @@ export function SchedulePage() {
       </div>
       <span>{visibleSlots.length} khung giờ</span>
     </div>
+    {member && <div className="slot-discovery-controls card">
+      <label>Ngày muốn tập<input type="date" min={new Date().toISOString().slice(0, 10)} value={slotDate} onChange={(event) => setSlotDate(event.target.value)} /></label>
+      <label>Sắp xếp PT<select value={slotSort} onChange={(event) => setSlotSort(event.target.value as SlotSort)}><option value="SOONEST">Lịch trống sớm nhất</option><option value="RATING">Đánh giá cao nhất</option><option value="REVIEW_COUNT">Nhiều lượt đánh giá nhất</option></select></label>
+      {slotDate && <button type="button" className="btn btn-ghost" onClick={() => setSlotDate('')}>Xóa ngày lọc</button>}
+    </div>}
 
     {visibleSlots.length ? <div className="slot-grid">
       {visibleSlots.map((slot) => <article className={`slot-card ${slot.bookings.length ? 'booked' : ''}`} key={slot.id}>
@@ -224,6 +281,7 @@ export function SchedulePage() {
         <div className="slot-detail">
           <strong>{formatTime(slot.startsAt)} – {formatTime(slot.endsAt)}</strong>
           <small><UserRound /> {slot.trainer.user.fullName}</small>
+          <small className="trainer-rating"><Star /> {slot.trainer.rating.count ? `${slot.trainer.rating.average?.toFixed(1)} (${slot.trainer.rating.count} đánh giá)` : 'Chưa có đánh giá'}</small>
           <span>{slot.bookings.length ? 'Đã có hội viên đặt' : 'Sẵn sàng nhận lịch'}</span>
         </div>
         {member && <button className="btn btn-small btn-dark" onClick={() => openBooking(slot)}>Chọn lịch</button>}
@@ -238,7 +296,7 @@ export function SchedulePage() {
       </div>
       <div className="selected-slot-summary"><CalendarCheck /><div><strong>{formatDate(selectedSlot.startsAt)} · {formatTime(selectedSlot.startsAt)} – {formatTime(selectedSlot.endsAt)}</strong><small>PT sẽ nhận được yêu cầu và xác nhận lịch với bạn.</small></div></div>
       <div className="booking-fields">
-        <label>Gói PT sử dụng<select required value={selectedPackageId} onChange={(event) => setSelectedPackageId(event.target.value)}>{eligiblePackages.map((item) => <option value={item.id} key={item.id}>{item.package.name} · còn {item.sessionsTotal - item.sessionsUsed} buổi</option>)}</select></label>
+        <label>Gói PT sử dụng<select required value={selectedPackageId} onChange={(event) => setSelectedPackageId(event.target.value)}>{eligiblePackages.map((item) => <option value={item.id} key={item.id}>{item.package.name} · khả dụng {item.sessionsTotal - item.sessionsUsed - item.sessionsReserved} buổi · đang giữ {item.sessionsReserved}</option>)}</select></label>
         <label>Lời nhắn cho PT <small>(không bắt buộc)</small><textarea maxLength={500} value={bookingNote} onChange={(event) => setBookingNote(event.target.value)} placeholder="Ví dụ: Mình muốn tập trung vào kỹ thuật squat..." /></label>
       </div>
       <div className="booking-composer-actions"><button type="button" className="btn btn-ghost" onClick={() => setSelectedSlot(null)}>Chọn giờ khác</button><button className="btn btn-primary" disabled={busy === 'booking'}><CalendarCheck /> {busy === 'booking' ? 'Đang gửi...' : 'Gửi yêu cầu đặt lịch'}</button></div>
@@ -253,11 +311,14 @@ export function SchedulePage() {
     <div className="card booking-list">
       {visibleBookings.length ? visibleBookings.map((item) => <div className="booking-row" key={item.id}>
         <div className="calendar-tile"><b>{new Date(item.slot.startsAt).getDate()}</b><span>TH {new Date(item.slot.startsAt).getMonth() + 1}</span></div>
-        <div className="grow booking-person"><strong>{member ? item.slot.trainer.user.fullName : item.member.user.fullName}</strong><small>{formatDate(item.slot.startsAt)} · {formatTime(item.slot.startsAt)} – {formatTime(item.slot.endsAt)}</small><small>{item.memberPtPackage.package.name}</small>{item.note && <p><MessageSquareText /> {item.note}</p>}</div>
+        <div className="grow booking-person"><strong>{member ? item.slot.trainer.user.fullName : item.member.user.fullName}</strong><small>{formatDate(item.slot.startsAt)} · {formatTime(item.slot.startsAt)} – {formatTime(item.slot.endsAt)}</small><small>{item.memberPtPackage.package.name}</small>{item.note && <p><MessageSquareText /> {item.note}</p>}{item.resolutionReason && <p className="resolution-reason"><XCircle /> {item.resolutionReason}</p>}{item.review && <p className="booking-review"><Star /> {item.review.rating}/5{item.review.comment ? ` · ${item.review.comment}` : ''}</p>}</div>
         <span className={`status ${item.status.toLowerCase()}`}>{statusLabels[item.status]}</span>
         <div className="row-actions">
           {trainer && item.status === 'PENDING' && <button className="btn btn-small btn-confirm" disabled={busy === item.id} onClick={() => void updateBooking(item.id, 'CONFIRMED')}><CheckCircle2 /> Xác nhận</button>}
+          {trainer && item.status === 'PENDING' && <button className="btn btn-small btn-danger" disabled={busy === item.id} onClick={() => void updateBooking(item.id, 'REJECTED')}><XCircle /> Từ chối</button>}
           {trainer && item.status === 'CONFIRMED' && <button className="btn btn-small btn-primary" disabled={busy === item.id} onClick={() => void updateBooking(item.id, 'COMPLETED')}>Hoàn thành</button>}
+          {trainer && item.status === 'CONFIRMED' && <button className="btn btn-small btn-ghost" disabled={busy === item.id} onClick={() => void updateBooking(item.id, 'NO_SHOW')}>Vắng mặt</button>}
+          {member && item.status === 'COMPLETED' && !item.review && <button className="btn btn-small btn-ghost" disabled={busy === item.id} onClick={() => void reviewBooking(item)}><Star /> Đánh giá</button>}
           {(member || trainer) && ['PENDING', 'CONFIRMED'].includes(item.status) && <button className="icon-action bad" disabled={busy === item.id} title="Hủy lịch" onClick={() => void updateBooking(item.id, 'CANCELLED')}><XCircle /></button>}
         </div>
       </div>) : <div className="empty-state"><CalendarCheck /><h3>Không có lịch trong bộ lọc này</h3><p>Lịch mới và thay đổi trạng thái sẽ xuất hiện tại đây.</p></div>}
