@@ -29,6 +29,9 @@
 | TC-25 | Đánh giá trước hoàn thành hoặc đánh giá lần hai | Bị từ chối; chỉ một review 1–5/booking COMPLETED. |
 | TC-26 | Check-in quanh 00:00 Việt Nam trên server UTC | Phân ngày theo `Asia/Ho_Chi_Minh`. |
 | TC-27 | Hội viên quay lại sau khi đã check-in trong ngày | 409 `CHECKIN_ALREADY_TODAY`; không tạo bản ghi/trừ lượt lần hai, Lễ tân vẫn có thể cho khách qua. |
+| TC-28 | Chủ phòng cho Lễ tân/PT nghỉ việc | User chuyển `INACTIVE`, lịch sử được giữ; đăng nhập mới và JWT cũ đều bị từ chối. |
+| TC-29 | Hai tab đăng nhập hai tài khoản khác nhau rồi tải lại | Mỗi tab vẫn giữ đúng tài khoản của mình, không lấy phiên từ tab còn lại. |
+| TC-30 | Thanh toán hoặc đổi trạng thái lịch khi một request tải dữ liệu cũ đang chạy | Giao diện cập nhật ngay; response cũ không ghi đè kết quả thao tác, tab khác đồng bộ trong chu kỳ kế tiếp. |
+| TC-31 | Hội viên hoàn thành buổi PT chưa đánh giá | Hiện nhắc đánh giá và biểu mẫu 1–5 sao; gửi thành công không cần tải lại trang. |
 
-Automated hiện kiểm tra health/controller cơ bản và ranh giới ngày `Asia/Ho_Chi_Minh`; toàn bộ TC nghiệp vụ trên cần được chạy lại với database test hoặc theo `docs/10-UI-Test-Guide.md` sau mỗi migration/deploy.
-
+Automated hiện kiểm tra health/controller cơ bản, ranh giới ngày `Asia/Ho_Chi_Minh` và việc JWT cũ bị chặn sau khi tài khoản nghỉ việc; toàn bộ TC nghiệp vụ trên cần được chạy lại với database test hoặc theo `docs/10-UI-Test-Guide.md` sau mỗi migration/deploy.

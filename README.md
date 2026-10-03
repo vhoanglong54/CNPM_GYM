@@ -138,7 +138,7 @@ Get-NetIPAddress -AddressFamily IPv4 |
 
 Ví dụ máy chủ có IP `192.168.1.20`, các máy khác truy cập `http://192.168.1.20:5173`. Khi Windows hỏi quyền mạng cho Node.js, chọn cho phép trên **Private networks**. Máy chủ phải luôn bật Docker và terminal `npm run dev` trong suốt buổi test.
 
-Mỗi trình duyệt lưu phiên đăng nhập riêng nên nhiều máy có thể đăng nhập các vai trò khác nhau cùng lúc. Frontend trên máy khách tự gọi API tại IP máy chủ, còn mọi API cùng đọc/ghi một PostgreSQL duy nhất. Vì vậy dữ liệu đơn hàng, lịch PT, hội viên và check-in là giống nhau giữa các máy. Trang giao dịch tự tải lại dữ liệu mỗi 5 giây.
+Mỗi tab lưu phiên đăng nhập riêng bằng `sessionStorage`, nên có thể mở nhiều tab cho các vai trò khác nhau mà không bị đổi tài khoản khi tải lại. Frontend trên máy khách tự gọi API tại IP máy chủ, còn mọi API cùng đọc/ghi một PostgreSQL duy nhất. Vì vậy dữ liệu đơn hàng, lịch PT, hội viên và check-in là giống nhau giữa các máy. Các màn hình nghiệp vụ tự đồng bộ định kỳ và khi người dùng quay lại tab.
 
 PostgreSQL chạy trong container `gym-management-db`; cổng `5432` chỉ được nối vào `127.0.0.1` của máy chủ để các máy khác không truy cập database trực tiếp. Backend dùng Prisma kết nối đến database này, còn trình duyệt chỉ gọi Backend qua cổng `3000`. Volume Docker `gym_postgres_data` lưu dữ liệu trên máy chủ, nên `docker compose down` chỉ dừng dịch vụ và vẫn giữ dữ liệu. **Không chạy `docker compose down -v`** nếu không muốn xóa toàn bộ database.
 
@@ -153,4 +153,3 @@ Dự án đã được chuẩn bị để deploy từ một Git repository thàn
 - Database production: PostgreSQL cloud; container trong `docker-compose.yml` chỉ dành cho local.
 
 Sau khi liên kết repository, push vào nhánh `main` sẽ tự động tạo production deployment. Hướng dẫn cấu hình biến môi trường, migration và kiểm tra sau deploy nằm tại [docs/11-Vercel-Deployment.md](docs/11-Vercel-Deployment.md).
-

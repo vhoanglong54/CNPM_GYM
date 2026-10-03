@@ -5,7 +5,7 @@
 | Dashboard tài chính | ✓ | — | — | — |
 | Danh sách hội viên | ✓ | ✓ | — | Chỉ mình |
 | Xóa hội viên chưa có lịch sử | ✓ | — | — | — |
-| Tạo/khóa nhân sự | ✓ | — | — | — |
+| Tạo/cho nghỉ việc/khôi phục nhân sự | ✓ | — | — | — |
 | Tạo/đóng bán gói | ✓ | Xem | — | Xem |
 | Tạo đơn | — | — | — | ✓ |
 | Xác nhận tiền mặt demo | ✓ | ✓ | — | — |
@@ -23,4 +23,3 @@
 Frontend chỉ dùng ma trận để ẩn menu. Backend là nguồn quyết định cuối cùng bằng JWT guard, role guard và ownership check.
 
 > Sai lệch implementation đang tồn tại: `GET /operations/checkins` chưa gắn role guard và nhánh lọc trong service có thể trả danh sách chung cho Trainer gọi API trực tiếp, dù Frontend không hiển thị trang Check-in cho Trainer. Ma trận trên thể hiện quyền nghiệp vụ mong muốn; chi tiết hành vi hiện tại được ghi tại `07-API-Specification.md`.
-

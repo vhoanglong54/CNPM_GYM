@@ -2,7 +2,7 @@
 
 Base URL local: `http://localhost:3000/api`. Base URL production: `https://titan-gym-api.vercel.app/api`. Swagger: `/api/docs`.
 
-Trừ các endpoint Public, request phải có `Authorization: Bearer <JWT>`. DTO được kiểm tra bởi `ValidationPipe` với `whitelist`, `transform` và `forbidNonWhitelisted`.
+Trừ các endpoint Public, request phải có `Authorization: Bearer <JWT>`. Mỗi request có JWT đều kiểm tra lại trạng thái và quyền hiện tại trong database; tài khoản đã chuyển sang `INACTIVE` không thể tiếp tục dùng JWT cũ. DTO được kiểm tra bởi `ValidationPipe` với `whitelist`, `transform` và `forbidNonWhitelisted`.
 
 ## Auth
 
@@ -26,7 +26,7 @@ Trừ các endpoint Public, request phải có `Authorization: Bearer <JWT>`. DT
 | DELETE | `/users/members/:id` | Owner; chỉ xóa Member chưa có lịch sử được bảo vệ. |
 | GET | `/users/staff` | Owner. |
 | POST | `/users/staff` | Owner; tạo Receptionist hoặc Trainer. |
-| PATCH | `/users/:id/status` | Owner; khóa/mở tài khoản, không tự khóa chính mình. |
+| PATCH | `/users/:id/status` | Owner; cho nghỉ việc/khôi phục Receptionist hoặc Trainer bằng `INACTIVE`/`ACTIVE`, không xóa lịch sử. |
 
 ## Catalog
 

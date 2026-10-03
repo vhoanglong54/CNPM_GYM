@@ -120,7 +120,7 @@ flowchart TB
   Protected[ProtectedRoute]
   RoleRoute[RoleRoute + menu theo role]
   Pages[Pages<br/>Auth, Dashboard, Packages, Orders,<br/>People, Schedule, Check-in, Reports]
-  AuthContext[AuthContext<br/>user + JWT trong localStorage]
+  AuthContext[AuthContext<br/>user + JWT riêng từng tab]
   Axios[Axios client / lib/api.ts]
   API[NestJS API]
 
@@ -132,7 +132,7 @@ flowchart TB
   Axios -. HTTP 401 .-> AuthContext
 ```
 
-Ẩn menu và `RoleRoute` chỉ là lớp trải nghiệm người dùng. Backend mới là nguồn quyết định quyền cuối cùng. Frontend tự tải lại trang Giao dịch mỗi 5 giây và trang Thông báo mỗi 15 giây; dự án hiện không dùng WebSocket.
+Ẩn menu và `RoleRoute` chỉ là lớp trải nghiệm người dùng. Backend mới là nguồn quyết định quyền cuối cùng. Phiên đăng nhập dùng `sessionStorage` để các tab có thể đăng nhập các vai trò độc lập. Các màn hình nghiệp vụ tự đồng bộ định kỳ và khi tab được mở lại; dự án hiện không dùng WebSocket.
 
 ## 5. Nguồn sự thật kỹ thuật
 

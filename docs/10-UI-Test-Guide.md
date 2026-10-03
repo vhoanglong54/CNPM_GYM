@@ -165,6 +165,8 @@ Kết quả mong đợi:
 
 Kết quả mong đợi: trạng thái đi đúng thứ tự `Chờ xác nhận → Đã xác nhận → Hoàn thành`; một lịch không thể hoàn thành hai lần hoặc đánh giá hai lần. PT có thể **Từ chối** kèm lý do; yêu cầu bị từ chối hoàn buổi đang giữ.
 
+Sau khi có lịch `COMPLETED` chưa được đánh giá, trang **Lịch PT** của Hội viên phải hiện thẻ nhắc **Đánh giá ngay**. Biểu mẫu hiển thị 5 nút sao, ô nhận xét và nút gửi; không cần nhập qua hộp thoại của trình duyệt.
+
 ### 5.4 Hủy lịch
 
 Tạo một lịch khác rồi hủy từ tài khoản được phép. Kết quả mong đợi là trạng thái **Đã hủy**, lý do được hiển thị và buổi đang giữ được hoàn. Hội viên không thể hủy lịch đã xác nhận khi còn dưới 4 giờ. Sau khi ca kết thúc, PT có thể chọn **Vắng mặt**; trường hợp này vẫn trừ một buổi.
@@ -199,11 +201,13 @@ Kết quả mong đợi:
 2. Tại **Gói tập**, tạo một gói mới và kiểm tra nó xuất hiện cho Hội viên.
 3. Tại **Nhân sự**, tạo tài khoản Lễ tân/PT và kiểm tra quyền đăng nhập.
 4. Tại **Hội viên**, tìm theo tên/email/mã và thử xóa một tài khoản test không còn dữ liệu liên quan.
+5. Tại **Nhân sự**, chọn **Cho nghỉ việc** trên một tài khoản Lễ tân/PT test; thử gọi lại API hoặc tải trang ở tab của nhân viên đó, sau đó dùng **Khôi phục tài khoản**.
 
 Kết quả mong đợi:
 
 - Chỉ Chủ phòng thấy thao tác tạo gói, tạo nhân sự và xóa hội viên.
 - Tài khoản có giao dịch/lịch sử liên quan được bảo vệ theo ràng buộc dữ liệu; thông báo lỗi phải rõ ràng.
+- Cho nghỉ việc chuyển tài khoản nhân viên sang `INACTIVE`, chặn cả JWT cũ và đăng nhập mới nhưng không xóa lịch sử giao dịch/lịch PT.
 - Không xóa các tài khoản mẫu nếu còn cần dùng cho phần test khác.
 
 ### Lễ tân, PT và Hội viên
@@ -244,13 +248,15 @@ Kết quả mong đợi: chỉ Chủ phòng truy cập được; doanh thu chỉ
 Kịch bản nhanh:
 
 1. Mỗi máy mở [https://titan-gym-web.vercel.app](https://titan-gym-web.vercel.app); không cần một máy đóng vai trò máy chủ.
-2. Máy A đăng nhập Hội viên, máy B đăng nhập Lễ tân, máy C đăng nhập Chủ phòng, máy D đăng nhập PT.
+2. Máy A đăng nhập Hội viên, máy B đăng nhập Lễ tân, máy C đăng nhập Chủ phòng, máy D đăng nhập PT. Có thể dùng nhiều tab trên cùng máy vì mỗi tab lưu phiên riêng.
 3. Máy A tạo đơn, báo đã chuyển khoản; B/C nhìn thấy yêu cầu chờ và một trong hai máy xác nhận.
 4. A nhìn thấy đơn hoàn tất và quyền lợi mới.
 5. D mở ca PT; A (với tài khoản có gói PT) đặt lịch; D xác nhận.
 6. B check-in một hội viên; C quan sát dashboard/lịch sử.
 
 Tất cả máy dùng các token đăng nhập riêng trong trình duyệt nhưng cùng gọi Backend production tại `https://titan-gym-api.vercel.app/api`. Backend dùng Prisma đọc/ghi cùng PostgreSQL Neon, vì vậy không có database riêng trên từng máy khách. Giao dịch database được commit một lần và lần tải dữ liệu tiếp theo ở máy khác sẽ nhận cùng kết quả.
+
+Sau mỗi thao tác, trạng thái trên chính tab phải đổi ngay; tab vai trò khác tự đồng bộ trong khoảng 5–10 giây hoặc ngay khi quay lại tab. Tải lại một tab không được làm tab đó nhảy sang tài khoản đang đăng nhập ở tab khác.
 
 Nếu kiểm thử production không truy cập được:
 
