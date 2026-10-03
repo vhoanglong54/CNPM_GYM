@@ -300,19 +300,31 @@ export class UsersService {
         'CANNOT_DISABLE_SELF',
         'Không thể tự khóa tài khoản đang đăng nhập.',
       );
-    const user = await this.prisma.user
-      .update({
-        where: { id },
-        data: { status },
-        select: { id: true, email: true, status: true },
-      })
-      .catch(() => null);
-    if (!user)
+    if (status !== UserStatus.ACTIVE && status !== UserStatus.INACTIVE)
       throw new ApiError(
-        'USER_NOT_FOUND',
-        'Không tìm thấy tài khoản.',
+        'STAFF_STATUS_INVALID',
+        'Trạng thái nhân viên chỉ có thể là đang làm việc hoặc đã nghỉ việc.',
+      );
+    const target = await this.prisma.user.findUnique({
+      where: { id },
+      select: { roles: { select: { role: { select: { code: true } } } } },
+    });
+    const isStaff = target?.roles.some(
+      (item) =>
+        item.role.code === RoleCode.RECEPTIONIST ||
+        item.role.code === RoleCode.TRAINER,
+    );
+    if (!target || !isStaff)
+      throw new ApiError(
+        'STAFF_NOT_FOUND',
+        'Không tìm thấy tài khoản Lễ tân hoặc PT.',
         HttpStatus.NOT_FOUND,
       );
+    const user = await this.prisma.user.update({
+      where: { id },
+      data: { status },
+      select: { id: true, email: true, status: true },
+    });
     await this.prisma.auditLog.create({
       data: {
         actorId: actor.id,
