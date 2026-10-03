@@ -74,6 +74,7 @@ model User {
   orders             Order[]                  @relation("MemberOrders")
   confirmedPayments  Payment[]                @relation("ConfirmedPayments")
   resolvedBookings   PtBooking[]              @relation("BookingResolvedBy")
+  notifications      Notification[]
   auditLogs          AuditLog[]               @relation("AuditActor")
 
   @@map("users")
@@ -345,6 +346,21 @@ model Receipt {
   payment       Payment  @relation(fields: [paymentId], references: [id])
 
   @@map("receipts")
+}
+
+model Notification {
+  id        String    @id @default(uuid())
+  userId    String
+  type      String
+  title     String
+  message   String
+  metadata  Json?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt, createdAt])
+  @@map("notifications")
 }
 
 model AuditLog {
