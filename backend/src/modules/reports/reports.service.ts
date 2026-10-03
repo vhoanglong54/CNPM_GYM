@@ -7,6 +7,7 @@ import {
   UserStatus,
 } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service.js';
+import { appDayBounds } from '../../common/date-time.js';
 
 @Injectable()
 export class ReportsService {
@@ -83,6 +84,145 @@ export class ReportsService {
       expiringMemberships: expiring,
       pendingOrders,
       recentTransactions,
+    };
+  }
+
+  async operationsReport() {
+    const { start, end } = appDayBounds();
+    const [
+      awaitingPayments,
+      paidPayments,
+      todayCashPayments,
+      bookingGroups,
+      trainers,
+      recentAuditLogs,
+    ] = await Promise.all([
+      this.prisma.payment.count({
+        where: { status: PaymentStatus.AWAITING_CONFIRMATION },
+      }),
+      this.prisma.payment.findMany({
+        where: { status: PaymentStatus.PAID },
+        select: {
+          amount: true,
+          method: true,
+          confirmedBy: { select: { id: true, fullName: true, email: true } },
+        },
+      }),
+      this.prisma.payment.findMany({
+        where: {
+          status: PaymentStatus.PAID,
+          method: 'CASH',
+          paidAt: { gte: start, lt: end },
+        },
+        select: {
+          id: true,
+          amount: true,
+          paidAt: true,
+          transactionCode: true,
+          confirmedBy: { select: { fullName: true, email: true } },
+          order: {
+            select: {
+              orderNumber: true,
+              member: { select: { fullName: true } },
+            },
+          },
+        },
+        orderBy: { paidAt: 'desc' },
+      }),
+      this.prisma.ptBooking.groupBy({
+        by: ['status'],
+        _count: { status: true },
+      }),
+      this.prisma.trainerProfile.findMany({
+        include: {
+          user: { select: { fullName: true, email: true } },
+          reviews: { select: { rating: true } },
+          slots: {
+            select: {
+              bookings: { select: { status: true } },
+            },
+          },
+        },
+        orderBy: { user: { fullName: 'asc' } },
+      }),
+      this.prisma.auditLog.findMany({
+        include: { actor: { select: { fullName: true, email: true } } },
+        orderBy: { createdAt: 'desc' },
+        take: 30,
+      }),
+    ]);
+
+    const revenueByMethod = paidPayments.reduce<Record<string, number>>(
+      (totals, payment) => {
+        totals[payment.method] =
+          (totals[payment.method] ?? 0) + Number(payment.amount);
+        return totals;
+      },
+      {},
+    );
+    const revenueByConfirmer = Object.values(
+      paidPayments.reduce<
+        Record<
+          string,
+          { id: string; fullName: string; email: string; amount: number; count: number }
+        >
+      >((totals, payment) => {
+        const confirmer = payment.confirmedBy;
+        if (!confirmer) return totals;
+        const current = totals[confirmer.id] ?? {
+          ...confirmer,
+          amount: 0,
+          count: 0,
+        };
+        current.amount += Number(payment.amount);
+        current.count += 1;
+        totals[confirmer.id] = current;
+        return totals;
+      }, {}),
+    ).sort((first, second) => second.amount - first.amount);
+    const bookingStatusCounts = Object.fromEntries(
+      bookingGroups.map((group) => [group.status, group._count.status]),
+    );
+    const trainerPerformance = trainers.map((trainer) => {
+      const ratings = trainer.reviews.map((review) => review.rating);
+      const bookings = trainer.slots.flatMap((slot) => slot.bookings);
+      const countStatus = (status: BookingStatus) =>
+        bookings.filter((booking) => booking.status === status).length;
+      return {
+        id: trainer.id,
+        trainerCode: trainer.trainerCode,
+        fullName: trainer.user.fullName,
+        email: trainer.user.email,
+        ratingAverage: ratings.length
+          ? ratings.reduce((sum, rating) => sum + rating, 0) / ratings.length
+          : null,
+        ratingCount: ratings.length,
+        completed: countStatus(BookingStatus.COMPLETED),
+        cancelled: countStatus(BookingStatus.CANCELLED),
+        rejected: countStatus(BookingStatus.REJECTED),
+        noShow: countStatus(BookingStatus.NO_SHOW),
+      };
+    });
+
+    return {
+      awaitingPayments,
+      totalRevenue: paidPayments.reduce(
+        (sum, payment) => sum + Number(payment.amount),
+        0,
+      ),
+      revenueByMethod,
+      revenueByConfirmer,
+      todayCash: {
+        amount: todayCashPayments.reduce(
+          (sum, payment) => sum + Number(payment.amount),
+          0,
+        ),
+        count: todayCashPayments.length,
+        transactions: todayCashPayments,
+      },
+      bookingStatusCounts,
+      trainerPerformance,
+      recentAuditLogs,
     };
   }
 }

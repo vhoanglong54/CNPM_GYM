@@ -16,4 +16,7 @@ export class ReportsController {
   @Get('dashboard') async dashboard() {
     return { success: true, data: await this.service.ownerDashboard() };
   }
+  @Get('operations') async operations() {
+    return { success: true, data: await this.service.operationsReport() };
+  }
 }
