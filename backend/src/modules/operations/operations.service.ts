@@ -7,7 +7,13 @@ import type {
   CheckinDto,
   CreateBookingDto,
   CreateSlotDto,
+  CreateTrainerReviewDto,
+  ListSlotsQueryDto,
+  UpdateBookingStatusDto,
 } from './operations.dto.js';
+import { SlotSort } from './operations.dto.js';
+
+const MEMBER_CANCELLATION_CUTOFF_MS = 4 * 60 * 60 * 1000;
 
 @Injectable()
 export class OperationsService {
@@ -44,9 +50,19 @@ export class OperationsService {
     });
   }
 
-  listSlots() {
-    return this.prisma.ptSlot.findMany({
-      where: { isOpen: true, startsAt: { gt: new Date() } },
+  async listSlots(query: ListSlotsQueryDto) {
+    if (query.from && query.to && new Date(query.from) >= new Date(query.to))
+      throw new ApiError(
+        'INVALID_SLOT_RANGE',
+        'Khoảng thời gian tìm lịch trống không hợp lệ.',
+      );
+    const startsAt = {
+      gt: new Date(),
+      ...(query.from ? { gte: new Date(query.from) } : {}),
+      ...(query.to ? { lt: new Date(query.to) } : {}),
+    };
+    const slots = await this.prisma.ptSlot.findMany({
+      where: { isOpen: true, startsAt },
       include: {
         trainer: { include: { user: { select: { fullName: true } } } },
         bookings: {
@@ -58,6 +74,53 @@ export class OperationsService {
       },
       orderBy: { startsAt: 'asc' },
     });
+    const trainerIds = [...new Set(slots.map((slot) => slot.trainerId))];
+    const ratings = trainerIds.length
+      ? await this.prisma.trainerReview.groupBy({
+          by: ['trainerId'],
+          where: { trainerId: { in: trainerIds } },
+          _avg: { rating: true },
+          _count: { rating: true },
+        })
+      : [];
+    const ratingByTrainer = new Map(
+      ratings.map((rating) => [
+        rating.trainerId,
+        {
+          average: rating._avg.rating ?? null,
+          count: rating._count.rating,
+        },
+      ]),
+    );
+    const result = slots.map((slot) => ({
+      ...slot,
+      trainer: {
+        ...slot.trainer,
+        rating: ratingByTrainer.get(slot.trainerId) ?? {
+          average: null,
+          count: 0,
+        },
+      },
+    }));
+    if (query.sort === SlotSort.RATING)
+      result.sort((first, second) => {
+        const ratingDifference =
+          (second.trainer.rating.average ?? -1) -
+          (first.trainer.rating.average ?? -1);
+        if (ratingDifference) return ratingDifference;
+        const countDifference =
+          second.trainer.rating.count - first.trainer.rating.count;
+        if (countDifference) return countDifference;
+        return first.startsAt.getTime() - second.startsAt.getTime();
+      });
+    if (query.sort === SlotSort.REVIEW_COUNT)
+      result.sort((first, second) => {
+        const countDifference =
+          second.trainer.rating.count - first.trainer.rating.count;
+        if (countDifference) return countDifference;
+        return first.startsAt.getTime() - second.startsAt.getTime();
+      });
+    return result;
   }
 
   async closeSlot(id: string, user: AuthUser) {
@@ -127,19 +190,35 @@ export class OperationsService {
             'Khung giờ này đã được đặt. Vui lòng chọn giờ khác.',
             HttpStatus.CONFLICT,
           );
+        const memberOverlap = await tx.ptBooking.findFirst({
+          where: {
+            memberId: memberProfileId,
+            status: { in: [BookingStatus.PENDING, BookingStatus.CONFIRMED] },
+            slot: {
+              startsAt: { lt: slot.endsAt },
+              endsAt: { gt: slot.startsAt },
+            },
+          },
+        });
+        if (memberOverlap)
+          throw new ApiError(
+            'MEMBER_BOOKING_OVERLAP',
+            'Bạn đã có lịch PT trùng với khung giờ này.',
+            HttpStatus.CONFLICT,
+          );
         const pkg = await tx.memberPtPackage.findFirst({
           where: { id: dto.memberPtPackageId, memberId: memberProfileId },
         });
         if (
           !pkg ||
-          pkg.sessionsUsed >= pkg.sessionsTotal ||
+          pkg.sessionsUsed + pkg.sessionsReserved >= pkg.sessionsTotal ||
           (pkg.expiresAt && pkg.expiresAt < new Date())
         )
           throw new ApiError(
             'PT_SESSIONS_EXHAUSTED',
             'Số buổi PT còn lại không đủ.',
           );
-        return tx.ptBooking.create({
+        const booking = await tx.ptBooking.create({
           data: {
             slotId: slot.id,
             memberId: memberProfileId,
@@ -148,6 +227,11 @@ export class OperationsService {
             holdKey: slot.id,
           },
         });
+        await tx.memberPtPackage.update({
+          where: { id: pkg.id },
+          data: { sessionsReserved: { increment: 1 } },
+        });
+        return booking;
       },
       { isolationLevel: 'Serializable' },
     );
@@ -173,12 +257,19 @@ export class OperationsService {
           include: { user: { select: { fullName: true, email: true } } },
         },
         memberPtPackage: { include: { package: true } },
+        resolvedBy: { select: { fullName: true, email: true } },
+        review: true,
       },
       orderBy: { createdAt: 'desc' },
     });
   }
 
-  async updateBooking(id: string, next: BookingStatus, user: AuthUser) {
+  async updateBooking(
+    id: string,
+    dto: UpdateBookingStatusDto,
+    user: AuthUser,
+  ) {
+    const next = dto.status;
     const booking = await this.prisma.ptBooking.findUnique({
       where: { id },
       include: { slot: true },
@@ -191,12 +282,9 @@ export class OperationsService {
       );
     const ownsAsTrainer = user.trainerProfileId === booking.slot.trainerId;
     const ownsAsMember = user.memberProfileId === booking.memberId;
+    const isOwner = user.roles.includes(RoleCode.OWNER);
     if (next === BookingStatus.CANCELLED) {
-      if (
-        !ownsAsTrainer &&
-        !ownsAsMember &&
-        !user.roles.includes(RoleCode.OWNER)
-      )
+      if (!ownsAsTrainer && !ownsAsMember && !isOwner)
         throw new ApiError(
           'FORBIDDEN',
           'Bạn không có quyền xử lý lịch này.',
@@ -215,12 +303,32 @@ export class OperationsService {
           'BOOKING_CANCEL_TOO_LATE',
           'Không thể hủy lịch đã bắt đầu.',
         );
-      return this.prisma.ptBooking.update({
-        where: { id },
-        data: { status: next, holdKey: null },
-      });
+      if (
+        ownsAsMember &&
+        booking.status === BookingStatus.CONFIRMED &&
+        booking.slot.startsAt.getTime() - Date.now() <
+          MEMBER_CANCELLATION_CUTOFF_MS
+      )
+        throw new ApiError(
+          'BOOKING_CANCELLATION_CUTOFF',
+          'Lịch đã xác nhận chỉ có thể hủy trước giờ tập ít nhất 4 giờ.',
+          HttpStatus.CONFLICT,
+        );
+      const suppliedReason = dto.reason?.trim() ?? '';
+      if ((ownsAsTrainer || isOwner) && suppliedReason.length < 3)
+        throw new ApiError(
+          'BOOKING_REASON_REQUIRED',
+          'Vui lòng nhập lý do hủy lịch.',
+        );
+      const reason = suppliedReason || 'Hội viên chủ động hủy lịch.';
+      return this.releaseReservedSession(
+        id,
+        BookingStatus.CANCELLED,
+        reason,
+        user,
+      );
     }
-    if (!ownsAsTrainer)
+    if (!ownsAsTrainer && !isOwner)
       throw new ApiError(
         'FORBIDDEN',
         'Bạn không có quyền xử lý lịch này.',
@@ -232,13 +340,45 @@ export class OperationsService {
     ) {
       return this.prisma.ptBooking.update({
         where: { id },
-        data: { status: next },
+        data: {
+          status: next,
+          resolvedById: user.id,
+          resolvedAt: new Date(),
+        },
       });
     }
     if (
-      next === BookingStatus.COMPLETED &&
+      next === BookingStatus.REJECTED &&
+      booking.status === BookingStatus.PENDING
+    ) {
+      const reason = dto.reason?.trim() ?? '';
+      if (reason.length < 3)
+        throw new ApiError(
+          'BOOKING_REASON_REQUIRED',
+          'Vui lòng nhập lý do từ chối lịch.',
+        );
+      return this.releaseReservedSession(
+        id,
+        BookingStatus.REJECTED,
+        reason,
+        user,
+      );
+    }
+    if (
+      (next === BookingStatus.COMPLETED || next === BookingStatus.NO_SHOW) &&
       booking.status === BookingStatus.CONFIRMED
     ) {
+      const now = new Date();
+      if (next === BookingStatus.COMPLETED && booking.slot.startsAt > now)
+        throw new ApiError(
+          'BOOKING_NOT_STARTED',
+          'Chưa thể hoàn thành buổi tập trước giờ bắt đầu.',
+        );
+      if (next === BookingStatus.NO_SHOW && booking.slot.endsAt > now)
+        throw new ApiError(
+          'BOOKING_NOT_ENDED',
+          'Chỉ có thể đánh dấu vắng mặt sau khi khung giờ kết thúc.',
+        );
       return this.prisma.$transaction(
         async (tx) => {
           const current = await tx.ptBooking.findUniqueOrThrow({
@@ -252,19 +392,49 @@ export class OperationsService {
           const pkg = await tx.memberPtPackage.findUniqueOrThrow({
             where: { id: current.memberPtPackageId },
           });
-          if (pkg.sessionsUsed >= pkg.sessionsTotal)
+          if (
+            pkg.sessionsReserved < 1 ||
+            pkg.sessionsUsed >= pkg.sessionsTotal
+          )
             throw new ApiError(
               'PT_SESSIONS_EXHAUSTED',
               'Số buổi PT còn lại không đủ.',
             );
           await tx.memberPtPackage.update({
             where: { id: pkg.id },
-            data: { sessionsUsed: { increment: 1 } },
+            data: {
+              sessionsUsed: { increment: 1 },
+              sessionsReserved: { decrement: 1 },
+            },
           });
-          return tx.ptBooking.update({
+          const updated = await tx.ptBooking.update({
             where: { id },
-            data: { status: next, completedAt: new Date(), holdKey: null },
+            data: {
+              status: next,
+              completedAt:
+                next === BookingStatus.COMPLETED ? new Date() : null,
+              holdKey: null,
+              resolutionReason:
+                next === BookingStatus.NO_SHOW
+                  ? dto.reason?.trim() || 'Hội viên vắng mặt.'
+                  : dto.reason?.trim() || null,
+              resolvedById: user.id,
+              resolvedAt: new Date(),
+            },
           });
+          await tx.auditLog.create({
+            data: {
+              actorId: user.id,
+              action:
+                next === BookingStatus.COMPLETED
+                  ? 'COMPLETE_PT_BOOKING'
+                  : 'MARK_PT_NO_SHOW',
+              entityType: 'PtBooking',
+              entityId: id,
+              metadata: { memberPtPackageId: pkg.id },
+            },
+          });
+          return updated;
         },
         { isolationLevel: 'Serializable' },
       );
@@ -272,6 +442,109 @@ export class OperationsService {
     throw new ApiError(
       'BOOKING_STATE_INVALID',
       'Buổi tập này không thể cập nhật trạng thái.',
+    );
+  }
+
+  async reviewBooking(
+    bookingId: string,
+    dto: CreateTrainerReviewDto,
+    user: AuthUser,
+  ) {
+    if (!user.memberProfileId)
+      throw new ApiError(
+        'MEMBER_PROFILE_REQUIRED',
+        'Chỉ hội viên tham gia buổi tập mới có thể đánh giá PT.',
+        HttpStatus.FORBIDDEN,
+      );
+    const booking = await this.prisma.ptBooking.findUnique({
+      where: { id: bookingId },
+      include: { slot: true, review: true },
+    });
+    if (!booking || booking.memberId !== user.memberProfileId)
+      throw new ApiError(
+        'BOOKING_NOT_FOUND',
+        'Không tìm thấy buổi PT của bạn.',
+        HttpStatus.NOT_FOUND,
+      );
+    if (booking.status !== BookingStatus.COMPLETED)
+      throw new ApiError(
+        'REVIEW_BOOKING_NOT_COMPLETED',
+        'Chỉ có thể đánh giá sau khi buổi PT đã hoàn thành.',
+      );
+    if (booking.review)
+      throw new ApiError(
+        'REVIEW_ALREADY_EXISTS',
+        'Buổi PT này đã được đánh giá.',
+        HttpStatus.CONFLICT,
+      );
+    return this.prisma.trainerReview.create({
+      data: {
+        bookingId,
+        trainerId: booking.slot.trainerId,
+        memberId: user.memberProfileId,
+        rating: dto.rating,
+        comment: dto.comment?.trim() || null,
+      },
+    });
+  }
+
+  private async releaseReservedSession(
+    bookingId: string,
+    status: 'CANCELLED' | 'REJECTED',
+    reason: string,
+    user: AuthUser,
+  ) {
+    return this.prisma.$transaction(
+      async (tx) => {
+        const current = await tx.ptBooking.findUniqueOrThrow({
+          where: { id: bookingId },
+        });
+        if (
+          current.status !== BookingStatus.PENDING &&
+          current.status !== BookingStatus.CONFIRMED
+        )
+          throw new ApiError(
+            'BOOKING_STATE_INVALID',
+            'Buổi tập này không thể cập nhật trạng thái.',
+          );
+        const pkg = await tx.memberPtPackage.findUniqueOrThrow({
+          where: { id: current.memberPtPackageId },
+        });
+        if (pkg.sessionsReserved < 1)
+          throw new ApiError(
+            'PT_RESERVATION_INCONSISTENT',
+            'Dữ liệu giữ buổi PT không hợp lệ. Vui lòng liên hệ Chủ phòng.',
+            HttpStatus.CONFLICT,
+          );
+        await tx.memberPtPackage.update({
+          where: { id: pkg.id },
+          data: { sessionsReserved: { decrement: 1 } },
+        });
+        const updated = await tx.ptBooking.update({
+          where: { id: bookingId },
+          data: {
+            status,
+            holdKey: null,
+            resolutionReason: reason,
+            resolvedById: user.id,
+            resolvedAt: new Date(),
+          },
+        });
+        await tx.auditLog.create({
+          data: {
+            actorId: user.id,
+            action:
+              status === BookingStatus.REJECTED
+                ? 'REJECT_PT_BOOKING'
+                : 'CANCEL_PT_BOOKING',
+            entityType: 'PtBooking',
+            entityId: bookingId,
+            metadata: { reason },
+          },
+        });
+        return updated;
+      },
+      { isolationLevel: 'Serializable' },
     );
   }
 

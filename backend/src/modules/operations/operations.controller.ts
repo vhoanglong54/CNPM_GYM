@@ -5,6 +5,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
@@ -15,6 +16,8 @@ import {
   CheckinDto,
   CreateBookingDto,
   CreateSlotDto,
+  CreateTrainerReviewDto,
+  ListSlotsQueryDto,
   UpdateBookingStatusDto,
 } from './operations.dto.js';
 import { OperationsService } from './operations.service.js';
@@ -25,8 +28,8 @@ import { OperationsService } from './operations.service.js';
 @Controller('operations')
 export class OperationsController {
   constructor(private readonly service: OperationsService) {}
-  @Get('slots') slots() {
-    return this.wrap(this.service.listSlots());
+  @Get('slots') slots(@Query() query: ListSlotsQueryDto) {
+    return this.wrap(this.service.listSlots(query));
   }
   @Post('slots') createSlot(
     @Body() dto: CreateSlotDto,
@@ -58,8 +61,18 @@ export class OperationsController {
     @CurrentUser() user: AuthUser,
   ) {
     return this.wrap(
-      this.service.updateBooking(id, dto.status, user),
+      this.service.updateBooking(id, dto, user),
       'Cập nhật lịch PT thành công.',
+    );
+  }
+  @Post('bookings/:id/review') reviewBooking(
+    @Param('id') id: string,
+    @Body() dto: CreateTrainerReviewDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.wrap(
+      this.service.reviewBooking(id, dto, user),
+      'Cảm ơn bạn đã đánh giá PT.',
     );
   }
   @Get('checkins') checkins(@CurrentUser() user: AuthUser) {
