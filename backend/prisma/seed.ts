@@ -416,7 +416,9 @@ async function main() {
         method: PaymentMethod.CASH,
         status: PaymentStatus.PAID,
         confirmedById: owner.id,
+        requestedAt: paid.paidAt,
         paidAt: paid.paidAt,
+        confirmedAt: paid.paidAt,
       },
       create: {
         id: paid.paymentId,
@@ -426,7 +428,9 @@ async function main() {
         method: PaymentMethod.CASH,
         status: PaymentStatus.PAID,
         confirmedById: owner.id,
+        requestedAt: paid.paidAt,
         paidAt: paid.paidAt,
+        confirmedAt: paid.paidAt,
       },
     });
     await prisma.receipt.upsert({

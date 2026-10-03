@@ -6,6 +6,7 @@ import {
   PaymentStatus,
   ProductType,
   RoleCode,
+  type Prisma,
 } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { fileURLToPath } from 'node:url';
@@ -14,11 +15,16 @@ import type { Response } from 'express';
 import { ApiError } from '../../common/api-error.js';
 import type { AuthUser } from '../../common/auth.types.js';
 import { PrismaService } from '../../database/prisma.service.js';
-import type { CreateOrderDto, PayOrderDto } from './orders.dto.js';
+import type {
+  CreateOrderDto,
+  PayOrderDto,
+  RejectPaymentDto,
+} from './orders.dto.js';
 
 const receiptFontPath = fileURLToPath(
   new URL('../../assets/fonts/DejaVuSans.ttf', import.meta.url),
 );
+const PAYMENT_CONFIRMATION_TTL_MS = 48 * 60 * 60 * 1000;
 
 @Injectable()
 export class OrdersService {
@@ -73,6 +79,13 @@ export class OrdersService {
   }
 
   async list(user: AuthUser) {
+    await this.prisma.payment.updateMany({
+      where: {
+        status: PaymentStatus.AWAITING_CONFIRMATION,
+        expiresAt: { lte: new Date() },
+      },
+      data: { status: PaymentStatus.EXPIRED },
+    });
     const canSeeAll =
       user.roles.includes(RoleCode.OWNER) ||
       user.roles.includes(RoleCode.RECEPTIONIST);
@@ -81,7 +94,20 @@ export class OrdersService {
       include: {
         items: true,
         member: { select: { id: true, fullName: true, email: true } },
-        payments: { include: { receipt: true } },
+        payments: {
+          include: {
+            receipt: true,
+            confirmedBy: {
+              select: {
+                id: true,
+                fullName: true,
+                email: true,
+                roles: { select: { role: { select: { code: true } } } },
+              },
+            },
+          },
+          orderBy: { requestedAt: 'desc' },
+        },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -133,102 +159,258 @@ export class OrdersService {
         'PAYMENT_METHOD_FORBIDDEN',
         'Nhân viên xác nhận thu tại quầy bằng phương thức tiền mặt.',
       );
-    const memberProfile = order.member.memberProfile;
-    if (!memberProfile)
+    if (!order.member.memberProfile)
       throw new ApiError(
         'MEMBER_PROFILE_REQUIRED',
         'Đơn hàng không có hồ sơ hội viên hợp lệ.',
       );
 
+    if (!isStaff) return this.requestTransferConfirmation(orderId, user);
+    return this.collectCash(orderId, user);
+  }
+
+  async confirmPayment(orderId: string, paymentId: string, user: AuthUser) {
+    this.assertPaymentStaff(user);
+    await this.prisma.payment.updateMany({
+      where: {
+        id: paymentId,
+        orderId,
+        status: PaymentStatus.AWAITING_CONFIRMATION,
+        expiresAt: { lte: new Date() },
+      },
+      data: { status: PaymentStatus.EXPIRED },
+    });
     return this.prisma.$transaction(
       async (tx) => {
-        const locked = await tx.order.findUniqueOrThrow({
-          where: { id: orderId },
+        const payment = await tx.payment.findFirst({
+          where: { id: paymentId, orderId },
+          include: { order: true },
         });
-        if (locked.status === OrderStatus.PAID)
+        if (!payment)
           throw new ApiError(
-            'ORDER_ALREADY_PAID',
-            'Đơn hàng này đã được thanh toán.',
+            'PAYMENT_NOT_FOUND',
+            'Không tìm thấy yêu cầu thanh toán.',
+            HttpStatus.NOT_FOUND,
+          );
+        if (payment.status === PaymentStatus.EXPIRED)
+          throw new ApiError(
+            'PAYMENT_REQUEST_EXPIRED',
+            'Yêu cầu thanh toán đã hết hạn. Hội viên cần gửi lại yêu cầu.',
             HttpStatus.CONFLICT,
           );
-        const transactionCode = `PAY-${Date.now()}-${randomUUID().slice(0, 6).toUpperCase()}`;
-        const receiptNumber = `RCT-${Date.now()}-${randomUUID().slice(0, 5).toUpperCase()}`;
-        const payment = await tx.payment.create({
+        if (payment.status !== PaymentStatus.AWAITING_CONFIRMATION)
+          throw new ApiError(
+            'PAYMENT_STATE_INVALID',
+            'Yêu cầu thanh toán này không còn chờ xác nhận.',
+            HttpStatus.CONFLICT,
+          );
+        if (payment.order.status !== OrderStatus.PENDING)
+          throw new ApiError(
+            'ORDER_NOT_PAYABLE',
+            'Đơn hàng không còn ở trạng thái chờ thanh toán.',
+            HttpStatus.CONFLICT,
+          );
+
+        const now = new Date();
+        const receiptNumber = this.createReceiptNumber();
+        const paidPayment = await tx.payment.update({
+          where: { id: payment.id },
           data: {
-            orderId,
-            transactionCode,
-            amount: order.totalAmount,
-            method: dto.method,
             status: PaymentStatus.PAID,
-            confirmedById: isStaff ? user.id : null,
+            confirmedById: user.id,
+            confirmedAt: now,
+            paidAt: now,
             receipt: { create: { receiptNumber } },
           },
           include: { receipt: true },
         });
-        await tx.order.update({
-          where: { id: orderId },
-          data: { status: OrderStatus.PAID },
-        });
+        await this.activateOrderEntitlements(tx, orderId);
+        await this.writePaymentAudit(
+          tx,
+          user.id,
+          'CONFIRM_TRANSFER_PAYMENT',
+          orderId,
+          payment.id,
+          payment.amount.toString(),
+        );
+        return {
+          orderId,
+          status: OrderStatus.PAID,
+          payment: paidPayment,
+          receipt: paidPayment.receipt,
+        };
+      },
+      { isolationLevel: 'Serializable' },
+    );
+  }
 
-        for (const item of order.items) {
-          if (item.productType === ProductType.MEMBERSHIP) {
-            const plan = await tx.membershipPlan.findUniqueOrThrow({
-              where: { id: item.productId },
-            });
-            const now = new Date();
-            const latestDurationMembership =
-              plan.type === MembershipType.DURATION
-                ? await tx.memberMembership.findFirst({
-                    where: {
-                      memberId: memberProfile.id,
-                      endDate: { gt: now },
-                      plan: { type: MembershipType.DURATION },
-                    },
-                    orderBy: { endDate: 'desc' },
-                  })
-                : null;
-            const startDate = latestDurationMembership?.endDate ?? now;
-            const endDate =
-              plan.type === MembershipType.DURATION && plan.durationDays
-                ? new Date(startDate.getTime() + plan.durationDays * 86_400_000)
-                : null;
-            await tx.memberMembership.create({
-              data: {
-                memberId: memberProfile.id,
-                planId: plan.id,
-                orderItemId: item.id,
-                startDate,
-                endDate,
-                visitsTotal: plan.visitLimit,
-              },
-            });
-          } else {
-            const pkg = await tx.ptPackage.findUniqueOrThrow({
-              where: { id: item.productId },
-            });
-            await tx.memberPtPackage.create({
-              data: {
-                memberId: memberProfile.id,
-                packageId: pkg.id,
-                orderItemId: item.id,
-                sessionsTotal: pkg.sessionCount,
-                expiresAt: new Date(Date.now() + 365 * 86_400_000),
-              },
-            });
-          }
-        }
+  async rejectPayment(
+    orderId: string,
+    paymentId: string,
+    dto: RejectPaymentDto,
+    user: AuthUser,
+  ) {
+    this.assertPaymentStaff(user);
+    return this.prisma.$transaction(
+      async (tx) => {
+        const payment = await tx.payment.findFirst({
+          where: { id: paymentId, orderId },
+        });
+        if (!payment)
+          throw new ApiError(
+            'PAYMENT_NOT_FOUND',
+            'Không tìm thấy yêu cầu thanh toán.',
+            HttpStatus.NOT_FOUND,
+          );
+        if (payment.status !== PaymentStatus.AWAITING_CONFIRMATION)
+          throw new ApiError(
+            'PAYMENT_STATE_INVALID',
+            'Yêu cầu thanh toán này không còn chờ xác nhận.',
+            HttpStatus.CONFLICT,
+          );
+        const reason = dto.reason.trim();
+        if (reason.length < 3)
+          throw new ApiError(
+            'PAYMENT_REJECTION_REASON_REQUIRED',
+            'Vui lòng nhập lý do từ chối rõ ràng.',
+          );
+        const rejected = await tx.payment.update({
+          where: { id: payment.id },
+          data: {
+            status: PaymentStatus.REJECTED,
+            confirmedById: user.id,
+            rejectedAt: new Date(),
+            rejectionReason: reason,
+          },
+        });
         await tx.auditLog.create({
           data: {
             actorId: user.id,
-            action: 'CONFIRM_MOCK_PAYMENT',
-            entityType: 'Order',
-            entityId: order.id,
-            metadata: {
-              method: dto.method,
-              amount: order.totalAmount.toString(),
-            },
+            action: 'REJECT_TRANSFER_PAYMENT',
+            entityType: 'Payment',
+            entityId: payment.id,
+            metadata: { orderId, reason },
           },
         });
+        return rejected;
+      },
+      { isolationLevel: 'Serializable' },
+    );
+  }
+
+  private async requestTransferConfirmation(orderId: string, user: AuthUser) {
+    return this.prisma.$transaction(
+      async (tx) => {
+        const now = new Date();
+        await tx.payment.updateMany({
+          where: {
+            orderId,
+            status: PaymentStatus.AWAITING_CONFIRMATION,
+            expiresAt: { lte: now },
+          },
+          data: { status: PaymentStatus.EXPIRED },
+        });
+        const order = await tx.order.findUniqueOrThrow({
+          where: { id: orderId },
+        });
+        if (order.status !== OrderStatus.PENDING)
+          throw new ApiError(
+            'ORDER_NOT_PAYABLE',
+            'Đơn hàng không còn ở trạng thái chờ thanh toán.',
+            HttpStatus.CONFLICT,
+          );
+        const awaiting = await tx.payment.findFirst({
+          where: {
+            orderId,
+            status: PaymentStatus.AWAITING_CONFIRMATION,
+          },
+        });
+        if (awaiting)
+          throw new ApiError(
+            'PAYMENT_ALREADY_AWAITING',
+            'Đơn hàng đã có yêu cầu chuyển khoản đang chờ nhân viên xác nhận.',
+            HttpStatus.CONFLICT,
+          );
+        const payment = await tx.payment.create({
+          data: {
+            orderId,
+            transactionCode: this.createTransactionCode(),
+            amount: order.totalAmount,
+            method: PaymentMethod.TRANSFER_DEMO,
+            status: PaymentStatus.AWAITING_CONFIRMATION,
+            requestedAt: now,
+            expiresAt: new Date(now.getTime() + PAYMENT_CONFIRMATION_TTL_MS),
+          },
+        });
+        await tx.auditLog.create({
+          data: {
+            actorId: user.id,
+            action: 'SUBMIT_TRANSFER_PAYMENT',
+            entityType: 'Payment',
+            entityId: payment.id,
+            metadata: { orderId, expiresAt: payment.expiresAt },
+          },
+        });
+        return {
+          orderId,
+          status: OrderStatus.PENDING,
+          payment,
+          confirmationRequired: true,
+        };
+      },
+      { isolationLevel: 'Serializable' },
+    );
+  }
+
+  private async collectCash(orderId: string, user: AuthUser) {
+    return this.prisma.$transaction(
+      async (tx) => {
+        const order = await tx.order.findUniqueOrThrow({
+          where: { id: orderId },
+        });
+        if (order.status !== OrderStatus.PENDING)
+          throw new ApiError(
+            'ORDER_NOT_PAYABLE',
+            'Đơn hàng không còn ở trạng thái chờ thanh toán.',
+            HttpStatus.CONFLICT,
+          );
+        const awaiting = await tx.payment.findFirst({
+          where: {
+            orderId,
+            status: PaymentStatus.AWAITING_CONFIRMATION,
+          },
+        });
+        if (awaiting)
+          throw new ApiError(
+            'PAYMENT_ALREADY_AWAITING',
+            'Đơn hàng đang có chuyển khoản chờ duyệt. Hãy xác nhận hoặc từ chối yêu cầu đó trước.',
+            HttpStatus.CONFLICT,
+          );
+        const now = new Date();
+        const payment = await tx.payment.create({
+          data: {
+            orderId,
+            transactionCode: this.createTransactionCode(),
+            amount: order.totalAmount,
+            method: PaymentMethod.CASH,
+            status: PaymentStatus.PAID,
+            requestedAt: now,
+            paidAt: now,
+            confirmedAt: now,
+            confirmedById: user.id,
+            receipt: { create: { receiptNumber: this.createReceiptNumber() } },
+          },
+          include: { receipt: true },
+        });
+        await this.activateOrderEntitlements(tx, orderId);
+        await this.writePaymentAudit(
+          tx,
+          user.id,
+          'COLLECT_CASH_PAYMENT',
+          orderId,
+          payment.id,
+          order.totalAmount.toString(),
+        );
         return {
           orderId,
           status: OrderStatus.PAID,
@@ -238,6 +420,119 @@ export class OrdersService {
       },
       { isolationLevel: 'Serializable' },
     );
+  }
+
+  private async activateOrderEntitlements(
+    tx: Prisma.TransactionClient,
+    orderId: string,
+  ) {
+    const order = await tx.order.findUniqueOrThrow({
+      where: { id: orderId },
+      include: { items: true, member: { include: { memberProfile: true } } },
+    });
+    if (order.status !== OrderStatus.PENDING)
+      throw new ApiError(
+        'ORDER_NOT_PAYABLE',
+        'Đơn hàng không còn ở trạng thái chờ thanh toán.',
+        HttpStatus.CONFLICT,
+      );
+    const memberProfile = order.member.memberProfile;
+    if (!memberProfile)
+      throw new ApiError(
+        'MEMBER_PROFILE_REQUIRED',
+        'Đơn hàng không có hồ sơ hội viên hợp lệ.',
+      );
+
+    for (const item of order.items) {
+      if (item.productType === ProductType.MEMBERSHIP) {
+        const plan = await tx.membershipPlan.findUniqueOrThrow({
+          where: { id: item.productId },
+        });
+        const now = new Date();
+        const latestDurationMembership =
+          plan.type === MembershipType.DURATION
+            ? await tx.memberMembership.findFirst({
+                where: {
+                  memberId: memberProfile.id,
+                  endDate: { gt: now },
+                  plan: { type: MembershipType.DURATION },
+                },
+                orderBy: { endDate: 'desc' },
+              })
+            : null;
+        const startDate = latestDurationMembership?.endDate ?? now;
+        const endDate =
+          plan.type === MembershipType.DURATION && plan.durationDays
+            ? new Date(startDate.getTime() + plan.durationDays * 86_400_000)
+            : null;
+        await tx.memberMembership.create({
+          data: {
+            memberId: memberProfile.id,
+            planId: plan.id,
+            orderItemId: item.id,
+            startDate,
+            endDate,
+            visitsTotal: plan.visitLimit,
+          },
+        });
+      } else {
+        const pkg = await tx.ptPackage.findUniqueOrThrow({
+          where: { id: item.productId },
+        });
+        await tx.memberPtPackage.create({
+          data: {
+            memberId: memberProfile.id,
+            packageId: pkg.id,
+            orderItemId: item.id,
+            sessionsTotal: pkg.sessionCount,
+            expiresAt: new Date(Date.now() + 365 * 86_400_000),
+          },
+        });
+      }
+    }
+    await tx.order.update({
+      where: { id: orderId },
+      data: { status: OrderStatus.PAID },
+    });
+  }
+
+  private async writePaymentAudit(
+    tx: Prisma.TransactionClient,
+    actorId: string,
+    action: string,
+    orderId: string,
+    paymentId: string,
+    amount: string,
+  ) {
+    await tx.auditLog.create({
+      data: {
+        actorId,
+        action,
+        entityType: 'Payment',
+        entityId: paymentId,
+        metadata: { orderId, amount },
+      },
+    });
+  }
+
+  private assertPaymentStaff(user: AuthUser) {
+    if (
+      !user.roles.includes(RoleCode.OWNER) &&
+      !user.roles.includes(RoleCode.RECEPTIONIST)
+    )
+      throw new ApiError(
+        'PAYMENT_STAFF_REQUIRED',
+        'Chỉ Chủ phòng hoặc Lễ tân mới có thể xác nhận thanh toán.',
+        HttpStatus.FORBIDDEN,
+      );
+  }
+
+  private createTransactionCode() {
+    return `PAY-${Date.now()}-${randomUUID().slice(0, 6).toUpperCase()}`;
+  }
+
+  private createReceiptNumber() {
+    return `RCT-${Date.now()}-${randomUUID().slice(0, 5).toUpperCase()}`;
   }
 
   async cancel(orderId: string, user: AuthUser) {
@@ -264,9 +559,31 @@ export class OrdersService {
         'ORDER_NOT_CANCELLABLE',
         'Chỉ có thể hủy đơn hàng đang chờ thanh toán.',
       );
-    return this.prisma.order.update({
-      where: { id: orderId },
-      data: { status: OrderStatus.CANCELLED },
+    return this.prisma.$transaction(async (tx) => {
+      await tx.payment.updateMany({
+        where: {
+          orderId,
+          status: PaymentStatus.AWAITING_CONFIRMATION,
+        },
+        data: {
+          status: PaymentStatus.REJECTED,
+          rejectedAt: new Date(),
+          rejectionReason: 'Đơn hàng đã bị hủy.',
+        },
+      });
+      const cancelled = await tx.order.update({
+        where: { id: orderId },
+        data: { status: OrderStatus.CANCELLED },
+      });
+      await tx.auditLog.create({
+        data: {
+          actorId: user.id,
+          action: 'CANCEL_ORDER',
+          entityType: 'Order',
+          entityId: orderId,
+        },
+      });
+      return cancelled;
     });
   }
 
@@ -303,11 +620,22 @@ export class OrdersService {
         'RECEIPT_NOT_AVAILABLE',
         'Chưa thể xuất phiếu thu cho đơn hàng này.',
       );
+    if (!payment.paidAt)
+      throw new ApiError(
+        'RECEIPT_PAYMENT_DATE_MISSING',
+        'Giao dịch chưa có thời gian thanh toán để xuất phiếu thu.',
+      );
     return { order, payment, receipt: payment.receipt };
   }
 
   async streamReceipt(orderId: string, user: AuthUser, response: Response) {
     const data = await this.receipt(orderId, user);
+    const payment = data.payment;
+    if (!payment.paidAt)
+      throw new ApiError(
+        'RECEIPT_PAYMENT_DATE_MISSING',
+        'Giao dịch chưa có thời gian thanh toán để xuất phiếu thu.',
+      );
     response.setHeader('Content-Type', 'application/pdf');
     response.setHeader(
       'Content-Disposition',
@@ -326,8 +654,8 @@ export class OrdersService {
     doc.text(
       `Hội viên: ${data.order.member.fullName} (${data.order.member.email})`,
     );
-    doc.text(`Ngày thu: ${data.payment.paidAt.toLocaleString('vi-VN')}`);
-    doc.text(`Phương thức: ${data.payment.method}`);
+    doc.text(`Ngày thu: ${payment.paidAt.toLocaleString('vi-VN')}`);
+    doc.text(`Phương thức: ${payment.method}`);
     doc.moveDown();
     data.order.items.forEach((item) =>
       doc.text(

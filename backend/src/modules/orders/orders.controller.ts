@@ -13,7 +13,11 @@ import type { Response } from 'express';
 import { CurrentUser } from '../../common/auth.decorators.js';
 import type { AuthUser } from '../../common/auth.types.js';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
-import { CreateOrderDto, PayOrderDto } from './orders.dto.js';
+import {
+  CreateOrderDto,
+  PayOrderDto,
+  RejectPaymentDto,
+} from './orders.dto.js';
 import { OrdersService } from './orders.service.js';
 
 @ApiTags('orders')
@@ -35,7 +39,28 @@ export class OrdersController {
   ) {
     return this.wrap(
       this.service.pay(id, dto, user),
-      'Xác nhận thanh toán thành công.',
+      'Đã ghi nhận thao tác thanh toán.',
+    );
+  }
+  @Patch(':orderId/payments/:paymentId/confirm') confirmPayment(
+    @Param('orderId') orderId: string,
+    @Param('paymentId') paymentId: string,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.wrap(
+      this.service.confirmPayment(orderId, paymentId, user),
+      'Đã xác nhận thanh toán và kích hoạt quyền lợi.',
+    );
+  }
+  @Patch(':orderId/payments/:paymentId/reject') rejectPayment(
+    @Param('orderId') orderId: string,
+    @Param('paymentId') paymentId: string,
+    @Body() dto: RejectPaymentDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.wrap(
+      this.service.rejectPayment(orderId, paymentId, dto, user),
+      'Đã từ chối yêu cầu xác nhận thanh toán.',
     );
   }
   @Patch(':id/cancel') cancel(
