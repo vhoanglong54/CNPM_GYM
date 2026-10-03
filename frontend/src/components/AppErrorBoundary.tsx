@@ -1,5 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { AlertTriangle, RotateCcw } from 'lucide-react'
+import { clearAuthSession } from '../lib/authSession'
 
 interface Props {
   children: ReactNode
@@ -21,8 +22,7 @@ export class AppErrorBoundary extends Component<Props, State> {
   }
 
   private recover = () => {
-    localStorage.removeItem('gym_token')
-    localStorage.removeItem('gym_user')
+    clearAuthSession()
     window.location.assign('/login')
   }
 

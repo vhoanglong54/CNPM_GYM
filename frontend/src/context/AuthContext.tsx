@@ -1,6 +1,14 @@
 /* oxlint-disable react/only-export-components -- provider and its hook intentionally share one module */
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { api } from '../lib/api'
+import {
+  clearAuthSession,
+  clearLegacySharedAuth,
+  getAuthToken,
+  getStoredUser,
+  saveAuthSession,
+  saveStoredUser,
+} from '../lib/authSession'
 import type { ApiResponse, User } from '../types'
 
 interface AuthContextValue {
@@ -13,7 +21,8 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null)
 
 function loadStoredUser(): User | null {
-  const saved = localStorage.getItem('gym_user')
+  clearLegacySharedAuth()
+  const saved = getStoredUser()
   if (!saved) return null
 
   try {
@@ -27,29 +36,27 @@ function loadStoredUser(): User | null {
     if (!isValid) throw new Error('Invalid stored user')
     return value as User
   } catch {
-    localStorage.removeItem('gym_user')
-    localStorage.removeItem('gym_token')
+    clearAuthSession()
     return null
   }
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(loadStoredUser)
-  const [loading, setLoading] = useState(Boolean(localStorage.getItem('gym_token')))
+  const [loading, setLoading] = useState(Boolean(getAuthToken()))
 
   const logout = () => {
-    localStorage.removeItem('gym_token')
-    localStorage.removeItem('gym_user')
+    clearAuthSession()
     setUser(null)
   }
 
   useEffect(() => {
-    const token = localStorage.getItem('gym_token')
+    const token = getAuthToken()
     if (!token) return
     api.get<ApiResponse<User>>('/auth/me')
       .then(({ data }) => {
         setUser(data.data)
-        localStorage.setItem('gym_user', JSON.stringify(data.data))
+        saveStoredUser(data.data)
       })
       .catch(logout)
       .finally(() => setLoading(false))
@@ -59,8 +66,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (email: string, password: string) => {
     const { data } = await api.post<ApiResponse<{ accessToken: string; user: User }>>('/auth/login', { email, password })
-    localStorage.setItem('gym_token', data.data.accessToken)
-    localStorage.setItem('gym_user', JSON.stringify(data.data.user))
+    saveAuthSession(data.data.accessToken, data.data.user)
     setUser(data.data.user)
     return data.data.user
   }
