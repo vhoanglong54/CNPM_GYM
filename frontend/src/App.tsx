@@ -9,6 +9,7 @@ import { PackagesPage } from './pages/PackagesPage'
 import { MembersPage, StaffPage } from './pages/PeoplePages'
 import { CheckinPage, SchedulePage } from './pages/OperationsPages'
 import { ProfilePage } from './pages/ProfilePage'
+import { NotificationsPage } from './pages/NotificationsPage'
 import type { Role } from './types'
 
 function RoleRoute({ roles, children }: { roles: Role[]; children: React.ReactNode }) {
@@ -29,6 +30,7 @@ export default function App() {
       <Route path="staff" element={<RoleRoute roles={['OWNER']}><StaffPage /></RoleRoute>} />
       <Route path="schedule" element={<RoleRoute roles={['OWNER','TRAINER','MEMBER']}><SchedulePage /></RoleRoute>} />
       <Route path="checkin" element={<RoleRoute roles={['OWNER','RECEPTIONIST','MEMBER']}><CheckinPage /></RoleRoute>} />
+      <Route path="notifications" element={<NotificationsPage />} />
       <Route path="profile" element={<ProfilePage />} />
     </Route>
     <Route path="*" element={<Navigate to="/" replace />} />
