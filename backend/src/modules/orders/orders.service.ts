@@ -8,12 +8,17 @@ import {
   RoleCode,
 } from '@prisma/client';
 import { randomUUID } from 'crypto';
+import { fileURLToPath } from 'node:url';
 import PDFDocument from 'pdfkit';
 import type { Response } from 'express';
 import { ApiError } from '../../common/api-error.js';
 import type { AuthUser } from '../../common/auth.types.js';
 import { PrismaService } from '../../database/prisma.service.js';
 import type { CreateOrderDto, PayOrderDto } from './orders.dto.js';
+
+const receiptFontPath = fileURLToPath(
+  new URL('../../assets/fonts/DejaVuSans.ttf', import.meta.url),
+);
 
 @Injectable()
 export class OrdersService {
@@ -312,17 +317,17 @@ export class OrdersService {
     doc.pipe(response);
     doc
       .fontSize(22)
-      .font('Helvetica-Bold')
+      .font(receiptFontPath)
       .text('TITAN GYM', { align: 'center' });
-    doc.moveDown(0.3).fontSize(15).text('PHIEU THU', { align: 'center' });
-    doc.fillColor('#111827').font('Helvetica').moveDown(2);
-    doc.text(`So phieu: ${data.receipt.receiptNumber}`);
-    doc.text(`Ma don: ${data.order.orderNumber}`);
+    doc.moveDown(0.3).fontSize(15).text('PHIẾU THU', { align: 'center' });
+    doc.fillColor('#111827').font(receiptFontPath).moveDown(2);
+    doc.text(`Số phiếu: ${data.receipt.receiptNumber}`);
+    doc.text(`Mã đơn: ${data.order.orderNumber}`);
     doc.text(
-      `Hoi vien: ${data.order.member.fullName} (${data.order.member.email})`,
+      `Hội viên: ${data.order.member.fullName} (${data.order.member.email})`,
     );
-    doc.text(`Ngay thu: ${data.payment.paidAt.toLocaleString('vi-VN')}`);
-    doc.text(`Phuong thuc: ${data.payment.method}`);
+    doc.text(`Ngày thu: ${data.payment.paidAt.toLocaleString('vi-VN')}`);
+    doc.text(`Phương thức: ${data.payment.method}`);
     doc.moveDown();
     data.order.items.forEach((item) =>
       doc.text(
@@ -331,18 +336,18 @@ export class OrdersService {
     );
     doc
       .moveDown()
-      .font('Helvetica-Bold')
+      .font(receiptFontPath)
       .fontSize(14)
       .text(
-        `TONG: ${Number(data.order.totalAmount).toLocaleString('vi-VN')} VND`,
+        `TỔNG: ${Number(data.order.totalAmount).toLocaleString('vi-VN')} VND`,
         { align: 'right' },
       );
     doc
       .moveDown(3)
-      .font('Helvetica')
+      .font(receiptFontPath)
       .fontSize(9)
       .fillColor('#6b7280')
-      .text('Chung tu duoc tao tu he thong quan ly Titan Gym.', {
+      .text('Chứng từ được tạo từ hệ thống quản lý Titan Gym.', {
         align: 'center',
       });
     doc.end();
