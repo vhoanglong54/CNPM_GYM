@@ -3,6 +3,7 @@ import { type Prisma, RoleCode } from '@prisma/client';
 import { ApiError } from '../../common/api-error.js';
 import type { AuthUser } from '../../common/auth.types.js';
 import { PrismaService } from '../../database/prisma.service.js';
+import { formatAppDateTime } from '../../common/date-time.js';
 
 type NotificationInput = {
   type: string;
@@ -16,6 +17,7 @@ export class NotificationsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async list(user: AuthUser) {
+    await this.createUpcomingPtReminders(user);
     const [items, unreadCount] = await Promise.all([
       this.prisma.notification.findMany({
         where: { userId: user.id },
@@ -27,6 +29,47 @@ export class NotificationsService {
       }),
     ]);
     return { items, unreadCount };
+  }
+
+  private async createUpcomingPtReminders(user: AuthUser) {
+    if (!user.memberProfileId && !user.trainerProfileId) return;
+    const now = new Date();
+    const reminderEnd = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+    const bookings = await this.prisma.ptBooking.findMany({
+      where: {
+        status: 'CONFIRMED',
+        slot: {
+          startsAt: { gt: now, lte: reminderEnd },
+          ...(user.trainerProfileId
+            ? { trainerId: user.trainerProfileId }
+            : {}),
+        },
+        ...(user.memberProfileId ? { memberId: user.memberProfileId } : {}),
+      },
+      include: {
+        slot: {
+          include: {
+            trainer: { include: { user: { select: { fullName: true } } } },
+          },
+        },
+        member: { include: { user: { select: { fullName: true } } } },
+      },
+    });
+    if (!bookings.length) return;
+    const audience = user.memberProfileId ? 'MEMBER' : 'TRAINER';
+    await this.prisma.notification.createMany({
+      data: bookings.map((booking) => ({
+        dedupeKey: `PT_REMINDER:${audience}:${user.id}:${booking.id}`,
+        userId: user.id,
+        type: 'BOOKING_REMINDER',
+        title: 'Nhắc lịch PT trong 24 giờ tới',
+        message: user.memberProfileId
+          ? `Bạn có lịch với ${booking.slot.trainer.user.fullName} lúc ${formatAppDateTime(booking.slot.startsAt)}.`
+          : `Bạn có lịch với Hội viên ${booking.member.user.fullName} lúc ${formatAppDateTime(booking.slot.startsAt)}.`,
+        metadata: { bookingId: booking.id, slotId: booking.slotId },
+      })),
+      skipDuplicates: true,
+    });
   }
 
   async markRead(id: string, user: AuthUser) {
