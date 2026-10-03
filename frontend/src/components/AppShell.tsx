@@ -14,6 +14,7 @@ const nav = [
   { to: '/orders', label: 'Giao dịch', icon: ReceiptText, roles: ['OWNER', 'RECEPTIONIST', 'MEMBER'] },
   { to: '/members', label: 'Hội viên', icon: Users, roles: ['OWNER', 'RECEPTIONIST'] },
   { to: '/staff', label: 'Nhân sự', icon: ShieldCheck, roles: ['OWNER'] },
+  { to: '/reports', label: 'Báo cáo', icon: BarChart3, roles: ['OWNER'] },
   { to: '/schedule', label: 'Lịch PT', icon: CalendarDays, roles: ['OWNER', 'TRAINER', 'MEMBER'] },
   { to: '/checkin', label: 'Check-in', icon: ClipboardCheck, roles: ['OWNER', 'RECEPTIONIST', 'MEMBER'] },
   { to: '/notifications', label: 'Thông báo', icon: Bell, roles: ['OWNER', 'RECEPTIONIST', 'TRAINER', 'MEMBER'] },
