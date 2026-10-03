@@ -21,6 +21,7 @@ import type {
   PayOrderDto,
   RejectPaymentDto,
 } from './orders.dto.js';
+import { NotificationsService } from '../notifications/notifications.service.js';
 
 const receiptFontPath = fileURLToPath(
   new URL('../../assets/fonts/DejaVuSans.ttf', import.meta.url),
@@ -29,7 +30,10 @@ const PAYMENT_CONFIRMATION_TTL_MS = 48 * 60 * 60 * 1000;
 
 @Injectable()
 export class OrdersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+  ) {}
 
   async create(dto: CreateOrderDto, user: AuthUser) {
     if (!user.memberProfileId)
@@ -234,6 +238,12 @@ export class OrdersService {
           payment.id,
           payment.amount.toString(),
         );
+        await this.notifications.notifyUsers(tx, [payment.order.memberId], {
+          type: 'PAYMENT_CONFIRMED',
+          title: 'Thanh toán đã được xác nhận',
+          message: `Đơn ${payment.order.orderNumber} đã được xác nhận và quyền lợi đã được kích hoạt.`,
+          metadata: { orderId, paymentId: payment.id },
+        });
         return {
           orderId,
           status: OrderStatus.PAID,
@@ -256,6 +266,7 @@ export class OrdersService {
       async (tx) => {
         const payment = await tx.payment.findFirst({
           where: { id: paymentId, orderId },
+          include: { order: { select: { memberId: true, orderNumber: true } } },
         });
         if (!payment)
           throw new ApiError(
@@ -292,6 +303,12 @@ export class OrdersService {
             entityId: payment.id,
             metadata: { orderId, reason },
           },
+        });
+        await this.notifications.notifyUsers(tx, [payment.order.memberId], {
+          type: 'PAYMENT_REJECTED',
+          title: 'Yêu cầu thanh toán bị từ chối',
+          message: `Đơn ${payment.order.orderNumber}: ${reason}`,
+          metadata: { orderId, paymentId: payment.id },
         });
         return rejected;
       },
@@ -352,6 +369,16 @@ export class OrdersService {
             metadata: { orderId, expiresAt: payment.expiresAt },
           },
         });
+        await this.notifications.notifyRoles(
+          tx,
+          [RoleCode.OWNER, RoleCode.RECEPTIONIST],
+          {
+            type: 'PAYMENT_REQUESTED',
+            title: 'Chuyển khoản chờ xác nhận',
+            message: `Đơn ${order.orderNumber} vừa được Hội viên báo đã chuyển khoản.`,
+            metadata: { orderId, paymentId: payment.id },
+          },
+        );
         return {
           orderId,
           status: OrderStatus.PENDING,
@@ -412,6 +439,12 @@ export class OrdersService {
           payment.id,
           order.totalAmount.toString(),
         );
+        await this.notifications.notifyUsers(tx, [order.memberId], {
+          type: 'CASH_PAYMENT_CONFIRMED',
+          title: 'Đã ghi nhận thanh toán tiền mặt',
+          message: `Đơn ${order.orderNumber} đã được nhân viên xác nhận và kích hoạt quyền lợi.`,
+          metadata: { orderId, paymentId: payment.id },
+        });
         return {
           orderId,
           status: OrderStatus.PAID,

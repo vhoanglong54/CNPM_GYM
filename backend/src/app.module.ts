@@ -8,6 +8,7 @@ import { CatalogModule } from './modules/catalog/catalog.module.js';
 import { OrdersModule } from './modules/orders/orders.module.js';
 import { OperationsModule } from './modules/operations/operations.module.js';
 import { ReportsModule } from './modules/reports/reports.module.js';
+import { NotificationsModule } from './modules/notifications/notifications.module.js';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { ReportsModule } from './modules/reports/reports.module.js';
     OrdersModule,
     OperationsModule,
     ReportsModule,
+    NotificationsModule,
   ],
   controllers: [AppController],
 })

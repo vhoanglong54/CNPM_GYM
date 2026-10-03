@@ -2,7 +2,7 @@ import { HttpStatus, Injectable } from '@nestjs/common';
 import { BookingStatus, MembershipType, RoleCode } from '@prisma/client';
 import { ApiError } from '../../common/api-error.js';
 import type { AuthUser } from '../../common/auth.types.js';
-import { appDayBounds } from '../../common/date-time.js';
+import { appDayBounds, formatAppDateTime } from '../../common/date-time.js';
 import { PrismaService } from '../../database/prisma.service.js';
 import type {
   CheckinDto,
@@ -13,12 +13,16 @@ import type {
   UpdateBookingStatusDto,
 } from './operations.dto.js';
 import { SlotSort } from './operations.dto.js';
+import { NotificationsService } from '../notifications/notifications.service.js';
 
 const MEMBER_CANCELLATION_CUTOFF_MS = 4 * 60 * 60 * 1000;
 
 @Injectable()
 export class OperationsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+  ) {}
 
   async createSlot(dto: CreateSlotDto, user: AuthUser) {
     if (!user.trainerProfileId)
@@ -232,6 +236,16 @@ export class OperationsService {
           where: { id: pkg.id },
           data: { sessionsReserved: { increment: 1 } },
         });
+        const trainer = await tx.trainerProfile.findUniqueOrThrow({
+          where: { id: slot.trainerId },
+          select: { userId: true },
+        });
+        await this.notifications.notifyUsers(tx, [trainer.userId], {
+          type: 'BOOKING_REQUESTED',
+          title: 'Có yêu cầu đặt lịch PT mới',
+          message: `Hội viên vừa đặt khung giờ ${formatAppDateTime(slot.startsAt)}.`,
+          metadata: { bookingId: booking.id, slotId: slot.id },
+        });
         return booking;
       },
       { isolationLevel: 'Serializable' },
@@ -339,13 +353,26 @@ export class OperationsService {
       next === BookingStatus.CONFIRMED &&
       booking.status === BookingStatus.PENDING
     ) {
-      return this.prisma.ptBooking.update({
-        where: { id },
-        data: {
-          status: next,
-          resolvedById: user.id,
-          resolvedAt: new Date(),
-        },
+      return this.prisma.$transaction(async (tx) => {
+        const updated = await tx.ptBooking.update({
+          where: { id },
+          data: {
+            status: next,
+            resolvedById: user.id,
+            resolvedAt: new Date(),
+          },
+        });
+        const member = await tx.memberProfile.findUniqueOrThrow({
+          where: { id: booking.memberId },
+          select: { userId: true },
+        });
+        await this.notifications.notifyUsers(tx, [member.userId], {
+          type: 'BOOKING_CONFIRMED',
+          title: 'PT đã xác nhận lịch',
+          message: `Lịch tập ${formatAppDateTime(booking.slot.startsAt)} đã được xác nhận.`,
+          metadata: { bookingId: id, slotId: booking.slotId },
+        });
+        return updated;
       });
     }
     if (
@@ -435,6 +462,25 @@ export class OperationsService {
               metadata: { memberPtPackageId: pkg.id },
             },
           });
+          const member = await tx.memberProfile.findUniqueOrThrow({
+            where: { id: current.memberId },
+            select: { userId: true },
+          });
+          await this.notifications.notifyUsers(tx, [member.userId], {
+            type:
+              next === BookingStatus.COMPLETED
+                ? 'BOOKING_COMPLETED'
+                : 'BOOKING_NO_SHOW',
+            title:
+              next === BookingStatus.COMPLETED
+                ? 'Buổi PT đã hoàn thành'
+                : 'Buổi PT được ghi nhận vắng mặt',
+            message:
+              next === BookingStatus.COMPLETED
+                ? 'Bạn có thể đánh giá PT cho buổi tập vừa hoàn thành.'
+                : 'Buổi đã xác nhận được tính là vắng mặt và đã trừ một buổi PT.',
+            metadata: { bookingId: id },
+          });
           return updated;
         },
         { isolationLevel: 'Serializable' },
@@ -478,14 +524,27 @@ export class OperationsService {
         'Buổi PT này đã được đánh giá.',
         HttpStatus.CONFLICT,
       );
-    return this.prisma.trainerReview.create({
-      data: {
-        bookingId,
-        trainerId: booking.slot.trainerId,
-        memberId: user.memberProfileId,
-        rating: dto.rating,
-        comment: dto.comment?.trim() || null,
-      },
+    return this.prisma.$transaction(async (tx) => {
+      const review = await tx.trainerReview.create({
+        data: {
+          bookingId,
+          trainerId: booking.slot.trainerId,
+          memberId: user.memberProfileId!,
+          rating: dto.rating,
+          comment: dto.comment?.trim() || null,
+        },
+      });
+      const trainer = await tx.trainerProfile.findUniqueOrThrow({
+        where: { id: booking.slot.trainerId },
+        select: { userId: true },
+      });
+      await this.notifications.notifyUsers(tx, [trainer.userId], {
+        type: 'TRAINER_REVIEWED',
+        title: 'Bạn có đánh giá mới',
+        message: `Hội viên đã đánh giá ${dto.rating}/5 sao cho một buổi tập đã hoàn thành.`,
+        metadata: { bookingId, reviewId: review.id },
+      });
+      return review;
     });
   }
 
@@ -499,6 +558,14 @@ export class OperationsService {
       async (tx) => {
         const current = await tx.ptBooking.findUniqueOrThrow({
           where: { id: bookingId },
+          include: {
+            member: { select: { userId: true } },
+            slot: {
+              include: {
+                trainer: { select: { userId: true } },
+              },
+            },
+          },
         });
         if (
           current.status !== BookingStatus.PENDING &&
@@ -542,6 +609,22 @@ export class OperationsService {
             entityId: bookingId,
             metadata: { reason },
           },
+        });
+        const recipients = [
+          current.member.userId,
+          current.slot.trainer.userId,
+        ].filter((userId) => userId !== user.id);
+        await this.notifications.notifyUsers(tx, recipients, {
+          type:
+            status === BookingStatus.REJECTED
+              ? 'BOOKING_REJECTED'
+              : 'BOOKING_CANCELLED',
+          title:
+            status === BookingStatus.REJECTED
+              ? 'Yêu cầu đặt lịch bị từ chối'
+              : 'Lịch PT đã bị hủy',
+          message: reason,
+          metadata: { bookingId },
         });
         return updated;
       },
