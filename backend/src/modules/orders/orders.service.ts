@@ -595,7 +595,16 @@ export class OrdersService {
         member: { select: { fullName: true, email: true } },
         payments: {
           where: { status: PaymentStatus.PAID },
-          include: { receipt: true },
+          include: {
+            receipt: true,
+            confirmedBy: {
+              select: {
+                fullName: true,
+                email: true,
+                roles: { select: { role: { select: { code: true } } } },
+              },
+            },
+          },
         },
       },
     });
@@ -620,10 +629,10 @@ export class OrdersService {
         'RECEIPT_NOT_AVAILABLE',
         'Chưa thể xuất phiếu thu cho đơn hàng này.',
       );
-    if (!payment.paidAt)
+    if (!payment.paidAt || !payment.confirmedAt || !payment.confirmedBy)
       throw new ApiError(
-        'RECEIPT_PAYMENT_DATE_MISSING',
-        'Giao dịch chưa có thời gian thanh toán để xuất phiếu thu.',
+        'RECEIPT_CONFIRMATION_MISSING',
+        'Giao dịch chưa có đầy đủ thông tin xác nhận để xuất phiếu thu.',
       );
     return { order, payment, receipt: payment.receipt };
   }
@@ -631,10 +640,10 @@ export class OrdersService {
   async streamReceipt(orderId: string, user: AuthUser, response: Response) {
     const data = await this.receipt(orderId, user);
     const payment = data.payment;
-    if (!payment.paidAt)
+    if (!payment.paidAt || !payment.confirmedAt || !payment.confirmedBy)
       throw new ApiError(
-        'RECEIPT_PAYMENT_DATE_MISSING',
-        'Giao dịch chưa có thời gian thanh toán để xuất phiếu thu.',
+        'RECEIPT_CONFIRMATION_MISSING',
+        'Giao dịch chưa có đầy đủ thông tin xác nhận để xuất phiếu thu.',
       );
     response.setHeader('Content-Type', 'application/pdf');
     response.setHeader(
@@ -655,7 +664,21 @@ export class OrdersService {
       `Hội viên: ${data.order.member.fullName} (${data.order.member.email})`,
     );
     doc.text(`Ngày thu: ${payment.paidAt.toLocaleString('vi-VN')}`);
-    doc.text(`Phương thức: ${payment.method}`);
+    doc.text(
+      `Phương thức: ${payment.method === PaymentMethod.CASH ? 'Tiền mặt' : 'Chuyển khoản'}`,
+    );
+    const confirmerRole = payment.confirmedBy.roles.some(
+      (item) => item.role.code === RoleCode.OWNER,
+    )
+      ? 'Chủ phòng'
+      : 'Lễ tân';
+    doc.text(
+      `Người xác nhận: ${payment.confirmedBy.fullName} (${confirmerRole})`,
+    );
+    doc.text(`Tài khoản xác nhận: ${payment.confirmedBy.email}`);
+    doc.text(
+      `Thời gian xác nhận: ${payment.confirmedAt.toLocaleString('vi-VN')}`,
+    );
     doc.moveDown();
     data.order.items.forEach((item) =>
       doc.text(
