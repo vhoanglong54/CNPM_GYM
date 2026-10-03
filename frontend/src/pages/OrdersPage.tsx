@@ -15,6 +15,7 @@ import {
 import toast from 'react-hot-toast'
 import { useAuth } from '../context/AuthContext'
 import { api, getErrorMessage, money } from '../lib/api'
+import { formatAppDateTime, formatAppTime } from '../lib/dateTime'
 import type { ApiResponse, Order } from '../types'
 
 type OrderFilter = 'ALL' | Order['status']
@@ -172,7 +173,7 @@ export function OrdersPage() {
       <div className="table-tools order-tools">
         <div className="search"><Search /><input placeholder="Tìm mã đơn, hội viên hoặc gói..." value={query} onChange={(event) => setQuery(event.target.value)} /></div>
         <div className="order-filter">{filters.map((item) => <button key={item.value} className={filter === item.value ? 'active' : ''} onClick={() => setFilter(item.value)}>{item.label}<span>{item.value === 'ALL' ? orders.length : orders.filter((order) => order.status === item.value).length}</span></button>)}</div>
-        <small className="sync-note">Tự đồng bộ mỗi 5 giây{lastSyncedAt ? ` · ${lastSyncedAt.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}` : ''}</small>
+        <small className="sync-note">Tự đồng bộ mỗi 5 giây{lastSyncedAt ? ` · ${formatAppTime(lastSyncedAt, true)}` : ''}</small>
       </div>
       <div className="table-wrap">
         <table className="orders-table"><thead><tr><th>Đơn hàng</th><th>Hội viên</th><th>Gói</th><th>Số tiền</th><th>Tiến trình</th><th>Thao tác</th></tr></thead>
@@ -180,7 +181,7 @@ export function OrdersPage() {
             const awaitingPayment = order.payments.find((payment) => payment.status === 'AWAITING_CONFIRMATION')
             const latestPayment = order.payments[0]
             return <tr key={order.id}>
-            <td><strong>{order.orderNumber}</strong><small>{new Date(order.createdAt).toLocaleString('vi-VN')}</small></td>
+            <td><strong>{order.orderNumber}</strong><small>{formatAppDateTime(order.createdAt)}</small></td>
             <td><strong>{order.member.fullName}</strong><small>{order.member.email}</small></td>
             <td><strong>{order.items[0]?.productName}</strong><small>{order.items[0]?.productType === 'PT_PACKAGE' ? 'Gói huấn luyện cá nhân' : 'Gói hội viên'}</small></td>
             <td><b>{money(order.totalAmount)}</b></td>

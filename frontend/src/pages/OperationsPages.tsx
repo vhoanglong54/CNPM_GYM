@@ -20,6 +20,7 @@ import QrScanner from 'qr-scanner'
 import toast from 'react-hot-toast'
 import { useAuth } from '../context/AuthContext'
 import { api, getErrorMessage } from '../lib/api'
+import { appDateParts, appDayIsoRange, appTodayKey, formatAppDate, formatAppDateTime, formatAppTime } from '../lib/dateTime'
 import type { ApiResponse, Profile } from '../types'
 
 type BookingStatus = 'PENDING' | 'CONFIRMED' | 'COMPLETED' | 'REJECTED' | 'CANCELLED' | 'NO_SHOW'
@@ -110,11 +111,9 @@ export function SchedulePage() {
   const load = () => {
     const params = new URLSearchParams({ sort: slotSort })
     if (slotDate) {
-      const from = new Date(`${slotDate}T00:00:00`)
-      const to = new Date(from)
-      to.setDate(to.getDate() + 1)
-      params.set('from', from.toISOString())
-      params.set('to', to.toISOString())
+      const { from, to } = appDayIsoRange(slotDate)
+      params.set('from', from)
+      params.set('to', to)
     }
     return Promise.all([
       api.get<ApiResponse<Slot[]>>(`/operations/slots?${params.toString()}`),
@@ -270,14 +269,14 @@ export function SchedulePage() {
       <span>{visibleSlots.length} khung giờ</span>
     </div>
     {member && <div className="slot-discovery-controls card">
-      <label>Ngày muốn tập<input type="date" min={new Date().toISOString().slice(0, 10)} value={slotDate} onChange={(event) => setSlotDate(event.target.value)} /></label>
+      <label>Ngày muốn tập<input type="date" min={appTodayKey()} value={slotDate} onChange={(event) => setSlotDate(event.target.value)} /></label>
       <label>Sắp xếp PT<select value={slotSort} onChange={(event) => setSlotSort(event.target.value as SlotSort)}><option value="SOONEST">Lịch trống sớm nhất</option><option value="RATING">Đánh giá cao nhất</option><option value="REVIEW_COUNT">Nhiều lượt đánh giá nhất</option></select></label>
       {slotDate && <button type="button" className="btn btn-ghost" onClick={() => setSlotDate('')}>Xóa ngày lọc</button>}
     </div>}
 
     {visibleSlots.length ? <div className="slot-grid">
-      {visibleSlots.map((slot) => <article className={`slot-card ${slot.bookings.length ? 'booked' : ''}`} key={slot.id}>
-        <div className="slot-date"><span>{new Date(slot.startsAt).toLocaleDateString('vi-VN', { weekday: 'short' })}</span><b>{new Date(slot.startsAt).getDate()}</b><small>TH {new Date(slot.startsAt).getMonth() + 1}</small></div>
+      {visibleSlots.map((slot) => { const dateParts = appDateParts(slot.startsAt); return <article className={`slot-card ${slot.bookings.length ? 'booked' : ''}`} key={slot.id}>
+        <div className="slot-date"><span>{dateParts.weekday}</span><b>{dateParts.day}</b><small>TH {dateParts.month}</small></div>
         <div className="slot-detail">
           <strong>{formatTime(slot.startsAt)} – {formatTime(slot.endsAt)}</strong>
           <small><UserRound /> {slot.trainer.user.fullName}</small>
@@ -286,7 +285,7 @@ export function SchedulePage() {
         </div>
         {member && <button className="btn btn-small btn-dark" onClick={() => openBooking(slot)}>Chọn lịch</button>}
         {trainer && !slot.bookings.length && <button className="icon-action bad" disabled={busy === slot.id} title="Đóng khung giờ" onClick={() => void closeSlot(slot)}><XCircle /></button>}
-      </article>)}
+      </article>})}
     </div> : <div className="card compact-empty"><CalendarClock /><div><strong>Chưa có khung giờ phù hợp</strong><p>{member ? 'PT sẽ sớm mở thêm lịch mới.' : 'Hãy mở một khung giờ để hội viên có thể đặt lịch.'}</p></div></div>}
 
     {selectedSlot && <form className="card booking-composer" onSubmit={book}>
@@ -310,7 +309,7 @@ export function SchedulePage() {
     </div>
     <div className="card booking-list">
       {visibleBookings.length ? visibleBookings.map((item) => <div className="booking-row" key={item.id}>
-        <div className="calendar-tile"><b>{new Date(item.slot.startsAt).getDate()}</b><span>TH {new Date(item.slot.startsAt).getMonth() + 1}</span></div>
+        <div className="calendar-tile"><b>{appDateParts(item.slot.startsAt).day}</b><span>TH {appDateParts(item.slot.startsAt).month}</span></div>
         <div className="grow booking-person"><strong>{member ? item.slot.trainer.user.fullName : item.member.user.fullName}</strong><small>{formatDate(item.slot.startsAt)} · {formatTime(item.slot.startsAt)} – {formatTime(item.slot.endsAt)}</small><small>{item.memberPtPackage.package.name}</small>{item.note && <p><MessageSquareText /> {item.note}</p>}{item.resolutionReason && <p className="resolution-reason"><XCircle /> {item.resolutionReason}</p>}{item.review && <p className="booking-review"><Star /> {item.review.rating}/5{item.review.comment ? ` · ${item.review.comment}` : ''}</p>}</div>
         <span className={`status ${item.status.toLowerCase()}`}>{statusLabels[item.status]}</span>
         <div className="row-actions">
@@ -351,11 +350,11 @@ function SlotForm({ onDone }: { onDone: () => void }) {
 }
 
 function formatTime(value: string) {
-  return new Date(value).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+  return formatAppTime(value)
 }
 
 function formatDate(value: string) {
-  return new Date(value).toLocaleDateString('vi-VN', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' })
+  return `${appDateParts(value).weekday}, ${formatAppDate(value)}`
 }
 
 export function CheckinPage() {
@@ -437,9 +436,9 @@ export function CheckinPage() {
         {cameraOpen && <CameraScanner onDetected={acceptScan} onClose={() => setCameraOpen(false)} />}
         {!cameraOpen && <div className="camera-placeholder"><ScanLine /><strong>Quét QR trên điện thoại hội viên</strong><small>Nếu thiết bị không hỗ trợ camera, hãy nhập mã ở bên dưới.</small></div>}
         <form onSubmit={lookup} className="checkin-form"><label>Mã hội viên<input value={code} onChange={(event) => { setCode(event.target.value.toUpperCase()); setEligibility(null); setSelectedMembershipId('') }} placeholder="Ví dụ: MB-000101" required /><small>Nhập đúng mã đang hiển thị trên tài khoản Hội viên.</small></label><button className="btn btn-dark btn-wide" disabled={busy || !code.trim()}><ScanLine /> {busy ? 'Đang kiểm tra...' : 'Kiểm tra quyền lợi'}</button></form>
-        {eligibility && <div className="eligibility-panel"><div className="eligibility-member"><div><strong>{eligibility.member.fullName}</strong><small>{eligibility.member.memberCode} · {eligibility.member.email}</small></div><span>Đủ điều kiện</span></div><p>Chọn đúng gói sẽ được ghi nhận cho lượt check-in này:</p><div className="membership-choices">{eligibility.memberships.map((membership) => <label className={selectedMembershipId === membership.id ? 'selected' : ''} key={membership.id}><input type="radio" name="checkin-membership" value={membership.id} checked={selectedMembershipId === membership.id} onChange={() => setSelectedMembershipId(membership.id)} /><span><strong>{membership.planName}</strong><small>{membership.type === 'DURATION' ? `Còn ${membership.remainingDays ?? 0} ngày · hết hạn ${membership.endDate ? new Date(membership.endDate).toLocaleDateString('vi-VN') : '—'}` : `Còn ${(membership.visitsTotal ?? 0) - membership.visitsUsed}/${membership.visitsTotal ?? 0} lượt`}</small></span>{membership.id === eligibility.recommendedMembershipId && <em>Đề xuất</em>}</label>)}</div><button type="button" className="btn btn-primary btn-wide" disabled={busy || !selectedMembershipId} onClick={() => void checkin()}><CheckCircle2 /> {busy ? 'Đang ghi nhận...' : `Xác nhận với ${eligibility.memberships.find((item) => item.id === selectedMembershipId)?.planName ?? 'gói đã chọn'}`}</button></div>}
+        {eligibility && <div className="eligibility-panel"><div className="eligibility-member"><div><strong>{eligibility.member.fullName}</strong><small>{eligibility.member.memberCode} · {eligibility.member.email}</small></div><span>Đủ điều kiện</span></div><p>Chọn đúng gói sẽ được ghi nhận cho lượt check-in này:</p><div className="membership-choices">{eligibility.memberships.map((membership) => <label className={selectedMembershipId === membership.id ? 'selected' : ''} key={membership.id}><input type="radio" name="checkin-membership" value={membership.id} checked={selectedMembershipId === membership.id} onChange={() => setSelectedMembershipId(membership.id)} /><span><strong>{membership.planName}</strong><small>{membership.type === 'DURATION' ? `Còn ${membership.remainingDays ?? 0} ngày · hết hạn ${membership.endDate ? formatAppDate(membership.endDate) : '—'}` : `Còn ${(membership.visitsTotal ?? 0) - membership.visitsUsed}/${membership.visitsTotal ?? 0} lượt`}</small></span>{membership.id === eligibility.recommendedMembershipId && <em>Đề xuất</em>}</label>)}</div><button type="button" className="btn btn-primary btn-wide" disabled={busy || !selectedMembershipId} onClick={() => void checkin()}><CheckCircle2 /> {busy ? 'Đang ghi nhận...' : `Xác nhận với ${eligibility.memberships.find((item) => item.id === selectedMembershipId)?.planName ?? 'gói đã chọn'}`}</button></div>}
       </div>}
-      <div className="card"><div className="card-heading"><div><span className="eyebrow dark">HOẠT ĐỘNG GẦN ĐÂY</span><h3>{isMember ? 'Lịch sử vào tập của tôi' : 'Lịch sử check-in'}</h3></div></div><div className="timeline">{history.length ? history.slice(0, 10).map((item) => <div className="timeline-item" key={item.id}><i /><div><strong>{item.member.user.fullName}</strong><small>{item.memberMembership.plan.name}</small></div><time>{new Date(item.checkedInAt).toLocaleString('vi-VN')}</time></div>) : <div className="empty-state"><Clock3 /><p>Chưa có lượt check-in.</p></div>}</div></div>
+      <div className="card"><div className="card-heading"><div><span className="eyebrow dark">HOẠT ĐỘNG GẦN ĐÂY</span><h3>{isMember ? 'Lịch sử vào tập của tôi' : 'Lịch sử check-in'}</h3></div></div><div className="timeline">{history.length ? history.slice(0, 10).map((item) => <div className="timeline-item" key={item.id}><i /><div><strong>{item.member.user.fullName}</strong><small>{item.memberMembership.plan.name}</small></div><time>{formatAppDateTime(item.checkedInAt)}</time></div>) : <div className="empty-state"><Clock3 /><p>Chưa có lượt check-in.</p></div>}</div></div>
     </div>
   </>
 }

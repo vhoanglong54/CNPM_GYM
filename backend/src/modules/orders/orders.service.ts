@@ -14,6 +14,7 @@ import PDFDocument from 'pdfkit';
 import type { Response } from 'express';
 import { ApiError } from '../../common/api-error.js';
 import type { AuthUser } from '../../common/auth.types.js';
+import { formatAppDateTime } from '../../common/date-time.js';
 import { PrismaService } from '../../database/prisma.service.js';
 import type {
   CreateOrderDto,
@@ -663,7 +664,7 @@ export class OrdersService {
     doc.text(
       `Hội viên: ${data.order.member.fullName} (${data.order.member.email})`,
     );
-    doc.text(`Ngày thu: ${payment.paidAt.toLocaleString('vi-VN')}`);
+    doc.text(`Ngày thu: ${formatAppDateTime(payment.paidAt)}`);
     doc.text(
       `Phương thức: ${payment.method === PaymentMethod.CASH ? 'Tiền mặt' : 'Chuyển khoản'}`,
     );
@@ -677,7 +678,7 @@ export class OrdersService {
     );
     doc.text(`Tài khoản xác nhận: ${payment.confirmedBy.email}`);
     doc.text(
-      `Thời gian xác nhận: ${payment.confirmedAt.toLocaleString('vi-VN')}`,
+      `Thời gian xác nhận: ${formatAppDateTime(payment.confirmedAt)}`,
     );
     doc.moveDown();
     data.order.items.forEach((item) =>

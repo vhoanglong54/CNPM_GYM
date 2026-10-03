@@ -2,6 +2,7 @@ import { HttpStatus, Injectable } from '@nestjs/common';
 import { BookingStatus, MembershipType, RoleCode } from '@prisma/client';
 import { ApiError } from '../../common/api-error.js';
 import type { AuthUser } from '../../common/auth.types.js';
+import { appDayBounds } from '../../common/date-time.js';
 import { PrismaService } from '../../database/prisma.service.js';
 import type {
   CheckinDto,
@@ -582,12 +583,11 @@ export class OperationsService {
         'Lượt check-in này đã được ghi nhận.',
         HttpStatus.CONFLICT,
       );
-    const startOfToday = new Date();
-    startOfToday.setHours(0, 0, 0, 0);
+    const { start: startOfToday, end: startOfTomorrow } = appDayBounds();
     const checkedInToday = await this.prisma.checkin.findFirst({
       where: {
         memberId: member.id,
-        checkedInAt: { gte: startOfToday },
+        checkedInAt: { gte: startOfToday, lt: startOfTomorrow },
       },
     });
     if (checkedInToday)
