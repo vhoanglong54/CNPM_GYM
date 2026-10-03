@@ -11,7 +11,7 @@ Ngoài phạm vi: thanh toán thật, hóa đơn điện tử, kế toán thuế
 - **Owner:** toàn quyền vận hành, nhân sự, giá/gói, giao dịch và báo cáo.
 - **Receptionist:** hội viên, hỗ trợ giao dịch tiền mặt mô phỏng, check-in, phiếu thu.
 - **Trainer:** mở slot cá nhân; xác nhận, hoàn tất hoặc hủy lịch thuộc mình.
-- **Member:** đăng ký/OTP, mua gói, mock payment, đặt PT, tự check-in và xem lịch sử cá nhân.
+- **Member:** đăng ký/OTP, mua gói, mock payment, đặt PT, hiển thị QR cá nhân cho nhân viên check-in và xem lịch sử cá nhân.
 
 ## 3. Yêu cầu chức năng
 
@@ -26,7 +26,7 @@ Ngoài phạm vi: thanh toán thật, hóa đơn điện tử, kế toán thuế
 | FR-07 | Receipt PDF ghi rõ chứng từ mô phỏng, không có giá trị thuế/thanh toán. |
 | FR-08 | Trainer mở slot tương lai không trùng; Member có lượt PT đặt slot còn trống. |
 | FR-09 | PT xác nhận rồi hoàn thành; chỉ lúc COMPLETED mới trừ một buổi. |
-| FR-10 | Check-in chỉ thành công với quyền lợi Gym hợp lệ, chống gửi lặp bằng idempotency key. |
+| FR-10 | Hội viên xuất trình QR cá nhân; Lễ tân/Chủ phòng quét hoặc nhập mã, chọn quyền lợi Gym hợp lệ và xác nhận check-in. API chống gửi lặp bằng idempotency key. |
 | FR-11 | Owner xem tổng thu chỉ từ payment PAID, hội viên, check-in, booking và gói sắp hết hạn. |
 | FR-12 | UI hiển thị thông báo tiếng Việt tại thao tác và vô hiệu hóa nút khi đang gửi. |
 | FR-13 | Người dùng xem/cập nhật hồ sơ và đổi mật khẩu sau khi xác nhận mật khẩu hiện tại. |
@@ -42,7 +42,7 @@ Ngoài phạm vi: thanh toán thật, hóa đơn điện tử, kế toán thuế
 
 ## 5. Chính sách MVP đã khóa
 
-- Check-in bằng mã hội viên; QR chỉ là hình thức hiển thị/demo.
+- QR chứa mã hội viên để Hội viên xuất trình; chỉ Lễ tân/Chủ phòng được quét hoặc nhập mã và xác nhận check-in.
 - Chống check-in lặp theo `idempotencyKey` và theo hội viên/ngày; mỗi lượt ghi rõ gói Gym được áp dụng.
 - Buổi PT trừ lượt khi `COMPLETED`; lịch hủy không trừ lượt.
 - Chỉ được hủy lịch trước khi slot bắt đầu.
