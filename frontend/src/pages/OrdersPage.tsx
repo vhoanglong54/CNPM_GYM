@@ -8,6 +8,7 @@ import {
   ReceiptText,
   RefreshCw,
   Search,
+  ShieldCheck,
   ShoppingBag,
   XCircle,
 } from 'lucide-react'
@@ -57,13 +58,46 @@ export function OrdersPage() {
   }, [])
 
   const pay = async (order: Order) => {
-    const action = isStaff ? 'xác nhận đã thu tiền' : 'xác nhận thanh toán'
+    const action = isStaff ? 'thu tiền mặt và xác nhận' : 'gửi yêu cầu xác nhận chuyển khoản'
     if (!window.confirm(`Bạn muốn ${action} cho đơn ${order.orderNumber}?`)) return
     setBusy(order.id)
     try {
       const { data } = await api.post<ApiResponse<unknown>>(`/orders/${order.id}/pay`, {
         method: isStaff ? 'CASH' : 'TRANSFER_DEMO',
       })
+      toast.success(data.message)
+      await load(true)
+    } catch (error) {
+      toast.error(getErrorMessage(error))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  const confirmTransfer = async (order: Order, paymentId: string) => {
+    if (!window.confirm(`Xác nhận đã nhận chuyển khoản cho đơn ${order.orderNumber}? Quyền lợi sẽ được kích hoạt ngay.`)) return
+    setBusy(order.id)
+    try {
+      const { data } = await api.patch<ApiResponse<unknown>>(`/orders/${order.id}/payments/${paymentId}/confirm`)
+      toast.success(data.message)
+      await load(true)
+    } catch (error) {
+      toast.error(getErrorMessage(error))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  const rejectTransfer = async (order: Order, paymentId: string) => {
+    const reason = window.prompt(`Lý do từ chối chuyển khoản của đơn ${order.orderNumber}:`)
+    if (reason === null) return
+    if (reason.trim().length < 3) {
+      toast.error('Vui lòng nhập lý do từ chối rõ ràng.')
+      return
+    }
+    setBusy(order.id)
+    try {
+      const { data } = await api.patch<ApiResponse<unknown>>(`/orders/${order.id}/payments/${paymentId}/reject`, { reason: reason.trim() })
       toast.success(data.message)
       await load(true)
     } catch (error) {
@@ -100,8 +134,8 @@ export function OrdersPage() {
 
   const counts = useMemo(() => ({
     pending: orders.filter((order) => order.status === 'PENDING').length,
+    awaiting: orders.filter((order) => order.payments.some((payment) => payment.status === 'AWAITING_CONFIRMATION')).length,
     paid: orders.filter((order) => order.status === 'PAID').length,
-    cancelled: orders.filter((order) => order.status === 'CANCELLED').length,
     revenue: orders.filter((order) => order.status === 'PAID').reduce((sum, order) => sum + Number(order.totalAmount), 0),
   }), [orders])
 
@@ -118,9 +152,9 @@ export function OrdersPage() {
     </section>
 
     <section className="order-summary" aria-label="Tổng quan giao dịch">
-      <Summary icon={Clock3} label="Chờ thanh toán" value={counts.pending} tone="pending" />
+      <Summary icon={Clock3} label="Đơn đang chờ xử lý" value={counts.pending} tone="pending" />
+      <Summary icon={ShieldCheck} label="Chuyển khoản chờ duyệt" value={counts.awaiting} tone="awaiting" />
       <Summary icon={CheckCircle2} label="Đã thanh toán" value={counts.paid} tone="paid" />
-      <Summary icon={XCircle} label="Đã hủy" value={counts.cancelled} tone="cancelled" />
       <Summary icon={Banknote} label="Tổng đã thanh toán" value={money(counts.revenue)} tone="revenue" />
     </section>
 
@@ -129,7 +163,7 @@ export function OrdersPage() {
       <i />
       <div><span>2</span><strong>Chờ thanh toán</strong><small>Đơn xuất hiện cho hội viên và nhân viên</small></div>
       <i />
-      <div><span>3</span><strong>Xác nhận</strong><small>Hội viên chuyển khoản hoặc nhân viên xác nhận thu</small></div>
+      <div><span>3</span><strong>Nhân viên xác nhận</strong><small>Lễ tân/Chủ phòng duyệt chuyển khoản hoặc thu tiền mặt</small></div>
       <i />
       <div><span>4</span><strong>Kích hoạt quyền lợi</strong><small>Gói tập được cấp tự động</small></div>
     </div>
@@ -142,18 +176,24 @@ export function OrdersPage() {
       </div>
       <div className="table-wrap">
         <table className="orders-table"><thead><tr><th>Đơn hàng</th><th>Hội viên</th><th>Gói</th><th>Số tiền</th><th>Tiến trình</th><th>Thao tác</th></tr></thead>
-          <tbody>{visible.map((order) => <tr key={order.id}>
+          <tbody>{visible.map((order) => {
+            const awaitingPayment = order.payments.find((payment) => payment.status === 'AWAITING_CONFIRMATION')
+            const latestPayment = order.payments[0]
+            return <tr key={order.id}>
             <td><strong>{order.orderNumber}</strong><small>{new Date(order.createdAt).toLocaleString('vi-VN')}</small></td>
             <td><strong>{order.member.fullName}</strong><small>{order.member.email}</small></td>
             <td><strong>{order.items[0]?.productName}</strong><small>{order.items[0]?.productType === 'PT_PACKAGE' ? 'Gói huấn luyện cá nhân' : 'Gói hội viên'}</small></td>
             <td><b>{money(order.totalAmount)}</b></td>
-            <td><OrderFlow order={order} /></td>
+            <td><OrderFlow order={order} />{latestPayment?.status === 'REJECTED' && <small className="payment-reason">Bị từ chối: {latestPayment.rejectionReason}</small>}{latestPayment?.status === 'EXPIRED' && <small className="payment-reason">Yêu cầu cũ đã hết hạn</small>}</td>
             <td><div className="row-actions order-actions">
-              {order.status === 'PENDING' && <button className="btn btn-small btn-primary" disabled={busy === order.id} onClick={() => void pay(order)}><Banknote /> {isStaff ? 'Xác nhận thu' : 'Thanh toán'}</button>}
+              {order.status === 'PENDING' && isStaff && awaitingPayment && <><button className="btn btn-small btn-confirm" disabled={busy === order.id} onClick={() => void confirmTransfer(order, awaitingPayment.id)}><CheckCircle2 /> Xác nhận CK</button><button className="btn btn-small btn-danger" disabled={busy === order.id} onClick={() => void rejectTransfer(order, awaitingPayment.id)}><XCircle /> Từ chối</button></>}
+              {order.status === 'PENDING' && isStaff && !awaitingPayment && <button className="btn btn-small btn-primary" disabled={busy === order.id} onClick={() => void pay(order)}><Banknote /> Thu tiền mặt</button>}
+              {order.status === 'PENDING' && !isStaff && !awaitingPayment && <button className="btn btn-small btn-primary" disabled={busy === order.id} onClick={() => void pay(order)}><Banknote /> Tôi đã chuyển khoản</button>}
+              {order.status === 'PENDING' && !isStaff && awaitingPayment && <span className="status pending"><Clock3 /> Chờ nhân viên duyệt</span>}
               {order.status === 'PENDING' && <button className="icon-action bad" disabled={busy === order.id} title="Hủy đơn" onClick={() => void cancel(order)}><XCircle /></button>}
               {order.status === 'PAID' && <button className="btn btn-small btn-ghost" onClick={() => void receipt(order)}><Download /> Phiếu thu</button>}
             </div></td>
-          </tr>)}</tbody>
+          </tr>})}</tbody>
         </table>
         {!visible.length && <div className="empty-state"><ReceiptText /><h3>Không có giao dịch phù hợp</h3><p>Thử chọn trạng thái khác hoặc xóa nội dung tìm kiếm.</p></div>}
       </div>
@@ -168,9 +208,12 @@ function Summary({ icon: Icon, label, value, tone }: { icon: typeof Clock3; labe
 function OrderFlow({ order }: { order: Order }) {
   const isPaid = order.status === 'PAID'
   const isCancelled = order.status === 'CANCELLED'
+  const payment = order.payments[0]
+  const awaiting = payment?.status === 'AWAITING_CONFIRMATION'
+  const needsRetry = payment?.status === 'REJECTED' || payment?.status === 'EXPIRED'
   return <div className={`order-flow ${order.status.toLowerCase()}`} title={statusLabel[order.status]}>
     <div className="done"><span><ShoppingBag /></span><small>Đã đăng ký</small></div><i />
     <div className={isCancelled ? 'muted' : 'done'}><span><Clock3 /></span><small>Chờ thanh toán</small></div><i />
-    <div className={isPaid ? 'done' : isCancelled ? 'cancelled' : 'current'}><span>{isCancelled ? <XCircle /> : isPaid ? <PackageCheck /> : <Banknote />}</span><small>{isCancelled ? 'Đã hủy' : isPaid ? 'Hoàn tất' : 'Đang chờ'}</small></div>
+    <div className={isPaid ? 'done' : isCancelled ? 'cancelled' : 'current'}><span>{isCancelled ? <XCircle /> : isPaid ? <PackageCheck /> : awaiting ? <ShieldCheck /> : <Banknote />}</span><small>{isCancelled ? 'Đã hủy' : isPaid ? 'Hoàn tất' : awaiting ? 'Chờ nhân viên' : needsRetry ? 'Cần gửi lại' : 'Chưa thanh toán'}</small></div>
   </div>
 }
