@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { BadgeCheck, CalendarDays, Dumbbell, LockKeyhole, Mail, Phone, UserRound } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { api, getErrorMessage } from '../lib/api'
@@ -9,9 +9,20 @@ const pageLoadedAt = Date.now()
 
 export function ProfilePage() {
   const [profile, setProfile] = useState<Profile | null>(null)
+  const load = useCallback((silent = false) => api.get<ApiResponse<Profile>>('/users/me/profile')
+    .then((response) => setProfile(response.data.data))
+    .catch((error) => { if (!silent) toast.error(getErrorMessage(error)) }), [])
+  /* oxlint-disable-next-line react/set-state-in-effect -- profile reflects newly activated packages without browser reload */
   useEffect(() => {
-    api.get<ApiResponse<Profile>>('/users/me/profile').then((response) => setProfile(response.data.data)).catch((error) => toast.error(getErrorMessage(error)))
-  }, [])
+    void load()
+    const refresh = () => { if (!document.hidden) void load(true) }
+    window.addEventListener('focus', refresh)
+    document.addEventListener('visibilitychange', refresh)
+    return () => {
+      window.removeEventListener('focus', refresh)
+      document.removeEventListener('visibilitychange', refresh)
+    }
+  }, [load])
   if (!profile) return <div className="loading-card">Đang tải hồ sơ...</div>
   return <>
     <section className="hero-row"><div><span className="eyebrow dark">TÀI KHOẢN CỦA TÔI</span><h2>Hồ sơ cá nhân</h2><p>Thông tin định danh và quyền lợi gắn với tài khoản của bạn.</p></div></section>

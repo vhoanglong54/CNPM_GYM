@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { Banknote, BarChart3, Clock3, Dumbbell, ShieldCheck, Star } from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
+import { Banknote, BarChart3, Clock3, Dumbbell, RefreshCw, ShieldCheck, Star } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { api, getErrorMessage, money } from '../lib/api'
 import { formatAppDateTime } from '../lib/dateTime'
@@ -47,15 +47,19 @@ interface OperationsReport {
 
 export function ReportsPage() {
   const [report, setReport] = useState<OperationsReport | null>(null)
+  const load = useCallback((silent = false) => api.get<ApiResponse<OperationsReport>>('/reports/operations')
+    .then(({ data }) => setReport(data.data))
+    .catch((error) => { if (!silent) toast.error(getErrorMessage(error)) }), [])
+  /* oxlint-disable-next-line react/set-state-in-effect -- reports stay synchronized with transactions and PT actions */
   useEffect(() => {
-    api.get<ApiResponse<OperationsReport>>('/reports/operations')
-      .then(({ data }) => setReport(data.data))
-      .catch((error) => toast.error(getErrorMessage(error)))
-  }, [])
+    void load()
+    const timer = window.setInterval(() => void load(true), 10_000)
+    return () => window.clearInterval(timer)
+  }, [load])
   if (!report) return <div className="loading-card">Đang tổng hợp báo cáo...</div>
 
   return <>
-    <section className="hero-row"><div><span className="eyebrow dark">KIỂM SOÁT VẬN HÀNH</span><h2>Báo cáo & đối soát</h2><p>Doanh thu, tiền mặt trong ngày, hiệu suất PT và nhật ký thao tác.</p></div></section>
+    <section className="hero-row"><div><span className="eyebrow dark">KIỂM SOÁT VẬN HÀNH</span><h2>Báo cáo & đối soát</h2><p>Doanh thu, tiền mặt trong ngày, hiệu suất PT và nhật ký thao tác.</p></div><button className="btn btn-ghost" onClick={() => void load()}><RefreshCw /> Làm mới</button></section>
     <section className="metric-grid report-metrics">
       <ReportMetric icon={Banknote} label="Tổng doanh thu" value={money(report.totalRevenue)} />
       <ReportMetric icon={Clock3} label="Chuyển khoản chờ duyệt" value={report.awaitingPayments} />

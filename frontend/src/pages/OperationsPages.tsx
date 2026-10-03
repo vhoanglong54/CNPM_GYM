@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import {
   Camera,
   CameraOff,
@@ -9,6 +9,7 @@ import {
   Dumbbell,
   MessageSquareText,
   Plus,
+  RefreshCw,
   ScanLine,
   Star,
   UserRound,
@@ -105,36 +106,63 @@ export function SchedulePage() {
   const [slotDate, setSlotDate] = useState('')
   const [slotSort, setSlotSort] = useState<SlotSort>('SOONEST')
   const [busy, setBusy] = useState('')
+  const [reviewTarget, setReviewTarget] = useState<Booking | null>(null)
+  const [reviewRating, setReviewRating] = useState(5)
+  const [reviewComment, setReviewComment] = useState('')
+  const loadRequestRef = useRef(0)
+  const lastAppliedRequestRef = useRef(0)
+  const dataVersionRef = useRef(0)
   const trainer = user?.roles.includes('TRAINER')
   const member = user?.roles.includes('MEMBER')
 
-  const load = () => {
+  const load = useCallback(async (silent = false) => {
+    const requestId = ++loadRequestRef.current
+    const dataVersion = dataVersionRef.current
     const params = new URLSearchParams({ sort: slotSort })
     if (slotDate) {
       const { from, to } = appDayIsoRange(slotDate)
       params.set('from', from)
       params.set('to', to)
     }
-    return Promise.all([
-      api.get<ApiResponse<Slot[]>>(`/operations/slots?${params.toString()}`),
-      api.get<ApiResponse<Booking[]>>('/operations/bookings'),
-      api.get<ApiResponse<Profile>>('/users/me/profile'),
-    ]).then(([slotResponse, bookingResponse, profileResponse]) => {
+    try {
+      const [slotResponse, bookingResponse, profileResponse] = await Promise.all([
+        api.get<ApiResponse<Slot[]>>(`/operations/slots?${params.toString()}`),
+        api.get<ApiResponse<Booking[]>>('/operations/bookings'),
+        api.get<ApiResponse<Profile>>('/users/me/profile'),
+      ])
+      if (dataVersion !== dataVersionRef.current || requestId < lastAppliedRequestRef.current) return
+      lastAppliedRequestRef.current = requestId
       setSlots(slotResponse.data.data)
       setBookings(bookingResponse.data.data)
       setProfile(profileResponse.data.data)
-    }).catch((error) => toast.error(getErrorMessage(error)))
-  }
+    } catch (error) {
+      if (!silent) toast.error(getErrorMessage(error))
+    }
+  }, [slotDate, slotSort])
 
-  /* oxlint-disable-next-line react-hooks/exhaustive-deps -- filters intentionally trigger a fresh server query */
-  useEffect(() => { void load() }, [slotDate, slotSort])
+  /* oxlint-disable react/set-state-in-effect -- effect loads server state and registers live refresh */
+  useEffect(() => {
+    void load()
+    const timer = window.setInterval(() => void load(true), 5_000)
+    const refreshVisiblePage = () => { if (!document.hidden) void load(true) }
+    window.addEventListener('focus', refreshVisiblePage)
+    document.addEventListener('visibilitychange', refreshVisiblePage)
+    return () => {
+      window.clearInterval(timer)
+      window.removeEventListener('focus', refreshVisiblePage)
+      document.removeEventListener('visibilitychange', refreshVisiblePage)
+    }
+  }, [load])
+  /* oxlint-enable react/set-state-in-effect */
 
+  /* oxlint-disable react/purity -- eligibility must be compared with the current browser time */
   const eligiblePackages = useMemo(() => (
     profile?.memberProfile?.ptPackages?.filter((item) => (
       item.sessionsUsed + item.sessionsReserved < item.sessionsTotal &&
       (!item.expiresAt || new Date(item.expiresAt) >= new Date())
     )) ?? []
   ), [profile])
+  /* oxlint-enable react/purity */
 
   const visibleSlots = useMemo(() => {
     if (member) return slots.filter((slot) => slot.bookings.length === 0)
@@ -162,6 +190,7 @@ export function SchedulePage() {
     event.preventDefault()
     if (!selectedSlot || !selectedPackageId) return
     setBusy('booking')
+    dataVersionRef.current += 1
     try {
       const { data } = await api.post<ApiResponse<unknown>>('/operations/bookings', {
         slotId: selectedSlot.id,
@@ -191,10 +220,12 @@ export function SchedulePage() {
       reason = input.trim()
     }
     setBusy(id)
+    dataVersionRef.current += 1
     try {
-      const { data } = await api.patch<ApiResponse<unknown>>(`/operations/bookings/${id}/status`, { status, reason })
+      const { data } = await api.patch<ApiResponse<{ status: BookingStatus; resolutionReason?: string }>>(`/operations/bookings/${id}/status`, { status, reason })
+      setBookings((current) => current.map((booking) => booking.id === id ? { ...booking, status: data.data.status, resolutionReason: data.data.resolutionReason ?? reason } : booking))
       toast.success(data.message)
-      await load()
+      void load(true)
     } catch (error) {
       toast.error(getErrorMessage(error))
     } finally {
@@ -202,21 +233,26 @@ export function SchedulePage() {
     }
   }
 
-  const reviewBooking = async (booking: Booking) => {
-    const ratingInput = window.prompt('Chấm điểm PT từ 1 đến 5 sao:')
-    if (ratingInput === null) return
-    const rating = Number(ratingInput)
-    if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
-      toast.error('Điểm đánh giá phải là số nguyên từ 1 đến 5.')
-      return
-    }
-    const comment = window.prompt('Nhận xét về PT (có thể để trống):')
-    if (comment === null) return
-    setBusy(booking.id)
+  const openReview = (booking: Booking) => {
+    setReviewTarget(booking)
+    setReviewRating(5)
+    setReviewComment('')
+  }
+
+  const reviewBooking = async (event: FormEvent) => {
+    event.preventDefault()
+    if (!reviewTarget) return
+    setBusy(reviewTarget.id)
+    dataVersionRef.current += 1
     try {
-      const { data } = await api.post<ApiResponse<unknown>>(`/operations/bookings/${booking.id}/review`, { rating, comment: comment.trim() || undefined })
+      const { data } = await api.post<ApiResponse<{ rating: number; comment?: string }>>(`/operations/bookings/${reviewTarget.id}/review`, {
+        rating: reviewRating,
+        comment: reviewComment.trim() || undefined,
+      })
+      setBookings((current) => current.map((booking) => booking.id === reviewTarget.id ? { ...booking, review: data.data } : booking))
       toast.success(data.message)
-      await load()
+      setReviewTarget(null)
+      void load(true)
     } catch (error) {
       toast.error(getErrorMessage(error))
     } finally {
@@ -227,10 +263,12 @@ export function SchedulePage() {
   const closeSlot = async (slot: Slot) => {
     if (!window.confirm(`Đóng khung giờ ${formatTime(slot.startsAt)} ngày ${formatDate(slot.startsAt)}?`)) return
     setBusy(slot.id)
+    dataVersionRef.current += 1
     try {
       const { data } = await api.patch<ApiResponse<unknown>>(`/operations/slots/${slot.id}/close`)
+      setSlots((current) => current.filter((item) => item.id !== slot.id))
       toast.success(data.message)
-      await load()
+      void load(true)
     } catch (error) {
       toast.error(getErrorMessage(error))
     } finally {
@@ -240,6 +278,7 @@ export function SchedulePage() {
 
   const activeCount = bookings.filter((item) => ['PENDING', 'CONFIRMED'].includes(item.status)).length
   const completedCount = bookings.filter((item) => item.status === 'COMPLETED').length
+  const pendingReviews = member ? bookings.filter((item) => item.status === 'COMPLETED' && !item.review) : []
   const remainingSessions = eligiblePackages.reduce((total, item) => total + item.sessionsTotal - item.sessionsUsed - item.sessionsReserved, 0)
 
   return <>
@@ -249,7 +288,10 @@ export function SchedulePage() {
         <h2>Lịch huấn luyện cá nhân</h2>
         <p>{member ? 'Chọn PT, gửi yêu cầu và theo dõi xác nhận trong cùng một nơi.' : trainer ? 'Quản lý thời gian rảnh và phản hồi lịch hẹn của hội viên.' : 'Theo dõi toàn bộ lịch huấn luyện đang vận hành.'}</p>
       </div>
-      {trainer && <button className="btn btn-primary" onClick={() => setShowSlotForm(!showSlotForm)}><Plus /> Mở khung giờ</button>}
+      <div className="hero-actions">
+        <button className="btn btn-ghost" onClick={() => void load()}><RefreshCw /> Làm mới</button>
+        {trainer && <button className="btn btn-primary" onClick={() => setShowSlotForm(!showSlotForm)}><Plus /> Mở khung giờ</button>}
+      </div>
     </section>
 
     <section className="schedule-stats" aria-label="Tổng quan lịch PT">
@@ -260,6 +302,18 @@ export function SchedulePage() {
     </section>
 
     {showSlotForm && <SlotForm onDone={() => { setShowSlotForm(false); void load() }} />}
+
+    {pendingReviews.length > 0 && <div className="card review-reminder">
+      <div><Star /><span><strong>Bạn có {pendingReviews.length} buổi PT chưa đánh giá</strong><small>Đánh giá giúp Hội viên khác chọn PT phù hợp.</small></span></div>
+      <button className="btn btn-primary" onClick={() => openReview(pendingReviews[0])}>Đánh giá ngay</button>
+    </div>}
+
+    {reviewTarget && <form className="card review-composer" onSubmit={reviewBooking}>
+      <div className="booking-composer-head"><div><span className="eyebrow dark">ĐÁNH GIÁ HUẤN LUYỆN VIÊN</span><h3>{reviewTarget.slot.trainer.user.fullName}</h3><p>{formatDate(reviewTarget.slot.startsAt)} · {formatTime(reviewTarget.slot.startsAt)}</p></div><button type="button" className="icon-button" aria-label="Đóng đánh giá" onClick={() => setReviewTarget(null)}><X /></button></div>
+      <fieldset className="star-picker"><legend>Mức độ hài lòng</legend>{[1, 2, 3, 4, 5].map((rating) => <button type="button" key={rating} className={rating <= reviewRating ? 'selected' : ''} aria-label={`${rating} sao`} onClick={() => setReviewRating(rating)}><Star /></button>)}<strong>{reviewRating}/5 sao</strong></fieldset>
+      <label>Nhận xét <small>(không bắt buộc)</small><textarea maxLength={500} value={reviewComment} onChange={(event) => setReviewComment(event.target.value)} placeholder="Chia sẻ trải nghiệm về buổi tập và PT..." /></label>
+      <div className="booking-composer-actions"><button type="button" className="btn btn-ghost" onClick={() => setReviewTarget(null)}>Để sau</button><button className="btn btn-primary" disabled={busy === reviewTarget.id}><Star /> {busy === reviewTarget.id ? 'Đang gửi...' : 'Gửi đánh giá'}</button></div>
+    </form>}
 
     <div className="section-heading schedule-section-heading">
       <div>
@@ -317,7 +371,7 @@ export function SchedulePage() {
           {trainer && item.status === 'PENDING' && <button className="btn btn-small btn-danger" disabled={busy === item.id} onClick={() => void updateBooking(item.id, 'REJECTED')}><XCircle /> Từ chối</button>}
           {trainer && item.status === 'CONFIRMED' && <button className="btn btn-small btn-primary" disabled={busy === item.id} onClick={() => void updateBooking(item.id, 'COMPLETED')}>Hoàn thành</button>}
           {trainer && item.status === 'CONFIRMED' && <button className="btn btn-small btn-ghost" disabled={busy === item.id} onClick={() => void updateBooking(item.id, 'NO_SHOW')}>Vắng mặt</button>}
-          {member && item.status === 'COMPLETED' && !item.review && <button className="btn btn-small btn-ghost" disabled={busy === item.id} onClick={() => void reviewBooking(item)}><Star /> Đánh giá</button>}
+          {member && item.status === 'COMPLETED' && !item.review && <button className="btn btn-small btn-ghost" disabled={busy === item.id} onClick={() => openReview(item)}><Star /> Đánh giá</button>}
           {(member || trainer) && ['PENDING', 'CONFIRMED'].includes(item.status) && <button className="icon-action bad" disabled={busy === item.id} title="Hủy lịch" onClick={() => void updateBooking(item.id, 'CANCELLED')}><XCircle /></button>}
         </div>
       </div>) : <div className="empty-state"><CalendarCheck /><h3>Không có lịch trong bộ lọc này</h3><p>Lịch mới và thay đổi trạng thái sẽ xuất hiện tại đây.</p></div>}
@@ -367,16 +421,20 @@ export function CheckinPage() {
   const [eligibility, setEligibility] = useState<CheckinEligibility | null>(null)
   const [selectedMembershipId, setSelectedMembershipId] = useState('')
   const isMember = user?.roles.includes('MEMBER')
-  const load = () => Promise.all([
+  const load = useCallback((silent = false) => Promise.all([
     api.get<ApiResponse<Profile>>('/users/me/profile'),
     api.get<ApiResponse<Checkin[]>>('/operations/checkins'),
   ]).then(([profileResponse, historyResponse]) => {
     setProfile(profileResponse.data.data)
     setHistory(historyResponse.data.data)
-  }).catch((error) => toast.error(getErrorMessage(error)))
+  }).catch((error) => { if (!silent) toast.error(getErrorMessage(error)) }), [])
 
-  /* oxlint-disable-next-line react-hooks/exhaustive-deps -- load is reused after mutations */
-  useEffect(() => { void load() }, [])
+  /* oxlint-disable-next-line react/set-state-in-effect -- check-in history stays synchronized across front-desk tabs */
+  useEffect(() => {
+    void load()
+    const timer = window.setInterval(() => void load(true), 10_000)
+    return () => window.clearInterval(timer)
+  }, [load])
 
   const inspectMemberships = async (memberCode: string) => {
     if (!memberCode.trim()) return

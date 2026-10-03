@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Activity, ArrowUpRight, CalendarCheck, CircleDollarSign, Clock3, Dumbbell, ScanLine, UserCheck, Users } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
@@ -22,7 +22,9 @@ const date = formatAppLongDate(new Date())
 export function DashboardPage() {
   const { user } = useAuth(); const isOwner=user?.roles.includes('OWNER');const isMember=user?.roles.includes('MEMBER');const isTrainer=user?.roles.includes('TRAINER')
   const [data,setData]=useState<DashboardData|null>(null);const [profile,setProfile]=useState<Profile|null>(null);const [error,setError]=useState('')
-  useEffect(()=>{const url=isOwner?'/reports/dashboard':'/users/me/profile';api.get<ApiResponse<DashboardData|Profile>>(url).then(({data})=>isOwner?setData(data.data as DashboardData):setProfile(data.data as Profile)).catch(e=>setError(getErrorMessage(e)))},[isOwner])
+  const load=useCallback((silent=false)=>{const url=isOwner?'/reports/dashboard':'/users/me/profile';return api.get<ApiResponse<DashboardData|Profile>>(url).then(({data})=>{setError('');if(isOwner)setData(data.data as DashboardData);else setProfile(data.data as Profile)}).catch(e=>{if(!silent)setError(getErrorMessage(e))})},[isOwner])
+  /* oxlint-disable-next-line react/set-state-in-effect -- dashboard stays synchronized with operational changes */
+  useEffect(()=>{void load();const timer=window.setInterval(()=>void load(true),10_000);const refresh=()=>{if(!document.hidden)void load(true)};window.addEventListener('focus',refresh);document.addEventListener('visibilitychange',refresh);return()=>{window.clearInterval(timer);window.removeEventListener('focus',refresh);document.removeEventListener('visibilitychange',refresh)}},[load])
   if(error)return <div className="empty-state"><Activity/><h3>Chưa thể tải tổng quan</h3><p>{error}</p></div>
   if((isOwner&&!data)||(!isOwner&&!profile))return <div className="loading-card">Đang tải tổng quan...</div>
   return <>

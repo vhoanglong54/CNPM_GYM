@@ -43,24 +43,26 @@ export interface Order {
   createdAt: string
   member: { id: string; fullName: string; email: string }
   items: Array<{ id: string; productName: string; productType: string; unitPrice: string | number }>
-  payments: Array<{
+  payments: OrderPayment[]
+}
+
+export interface OrderPayment {
+  id: string
+  method: 'CASH' | 'TRANSFER_DEMO'
+  status: 'AWAITING_CONFIRMATION' | 'PAID' | 'REJECTED' | 'EXPIRED' | 'FAILED'
+  requestedAt: string
+  expiresAt?: string
+  paidAt?: string
+  confirmedAt?: string
+  rejectedAt?: string
+  rejectionReason?: string
+  confirmedBy?: {
     id: string
-    method: 'CASH' | 'TRANSFER_DEMO'
-    status: 'AWAITING_CONFIRMATION' | 'PAID' | 'REJECTED' | 'EXPIRED' | 'FAILED'
-    requestedAt: string
-    expiresAt?: string
-    paidAt?: string
-    confirmedAt?: string
-    rejectedAt?: string
-    rejectionReason?: string
-    confirmedBy?: {
-      id: string
-      fullName: string
-      email: string
-      roles: Array<{ role: { code: Role } }>
-    }
-    receipt?: { receiptNumber: string }
-  }>
+    fullName: string
+    email: string
+    roles: Array<{ role: { code: Role } }>
+  }
+  receipt?: { receiptNumber: string }
 }
 
 export interface Profile {

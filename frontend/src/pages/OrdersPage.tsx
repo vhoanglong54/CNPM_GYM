@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Banknote,
   CheckCircle2,
@@ -16,9 +16,10 @@ import toast from 'react-hot-toast'
 import { useAuth } from '../context/AuthContext'
 import { api, getErrorMessage, money } from '../lib/api'
 import { formatAppDateTime, formatAppTime } from '../lib/dateTime'
-import type { ApiResponse, Order } from '../types'
+import type { ApiResponse, Order, OrderPayment } from '../types'
 
 type OrderFilter = 'ALL' | Order['status']
+type PaymentActionResult = { orderId: string; status: Order['status']; payment: OrderPayment }
 
 const statusLabel: Record<Order['status'], string> = {
   PENDING: 'Chờ thanh toán',
@@ -40,34 +41,60 @@ export function OrdersPage() {
   const [filter, setFilter] = useState<OrderFilter>('ALL')
   const [busy, setBusy] = useState('')
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null)
+  const loadRequestRef = useRef(0)
+  const lastAppliedRequestRef = useRef(0)
+  const dataVersionRef = useRef(0)
   const isStaff = user?.roles.some((role) => role === 'OWNER' || role === 'RECEPTIONIST')
 
-  const load = (silent = false) => api.get<ApiResponse<Order[]>>('/orders')
-    .then(({ data }) => {
+  const load = useCallback(async (silent = false) => {
+    const requestId = ++loadRequestRef.current
+    const dataVersion = dataVersionRef.current
+    try {
+      const { data } = await api.get<ApiResponse<Order[]>>('/orders')
+      if (dataVersion !== dataVersionRef.current || requestId < lastAppliedRequestRef.current) return
+      lastAppliedRequestRef.current = requestId
       setOrders(data.data)
       setLastSyncedAt(new Date())
-    })
-    .catch((error) => {
+    } catch (error) {
       if (!silent) toast.error(getErrorMessage(error))
-    })
+    }
+  }, [])
 
-  /* oxlint-disable-next-line react-hooks/exhaustive-deps -- polling intentionally reuses load */
+  const applyPayment = (orderId: string, payment: OrderPayment, status?: Order['status']) => {
+    setOrders((current) => current.map((order) => order.id === orderId ? {
+      ...order,
+      status: status ?? order.status,
+      payments: [payment, ...order.payments.filter((item) => item.id !== payment.id)],
+    } : order))
+  }
+
+  /* oxlint-disable react/set-state-in-effect -- effect loads server state and registers live refresh */
   useEffect(() => {
     void load()
     const timer = window.setInterval(() => void load(true), 5000)
-    return () => window.clearInterval(timer)
-  }, [])
+    const refreshVisiblePage = () => { if (!document.hidden) void load(true) }
+    window.addEventListener('focus', refreshVisiblePage)
+    document.addEventListener('visibilitychange', refreshVisiblePage)
+    return () => {
+      window.clearInterval(timer)
+      window.removeEventListener('focus', refreshVisiblePage)
+      document.removeEventListener('visibilitychange', refreshVisiblePage)
+    }
+  }, [load])
+  /* oxlint-enable react/set-state-in-effect */
 
   const pay = async (order: Order) => {
     const action = isStaff ? 'thu tiền mặt và xác nhận' : 'gửi yêu cầu xác nhận chuyển khoản'
     if (!window.confirm(`Bạn muốn ${action} cho đơn ${order.orderNumber}?`)) return
     setBusy(order.id)
+    dataVersionRef.current += 1
     try {
-      const { data } = await api.post<ApiResponse<unknown>>(`/orders/${order.id}/pay`, {
+      const { data } = await api.post<ApiResponse<PaymentActionResult>>(`/orders/${order.id}/pay`, {
         method: isStaff ? 'CASH' : 'TRANSFER_DEMO',
       })
+      applyPayment(order.id, data.data.payment, data.data.status)
       toast.success(data.message)
-      await load(true)
+      void load(true)
     } catch (error) {
       toast.error(getErrorMessage(error))
     } finally {
@@ -78,10 +105,12 @@ export function OrdersPage() {
   const confirmTransfer = async (order: Order, paymentId: string) => {
     if (!window.confirm(`Xác nhận đã nhận chuyển khoản cho đơn ${order.orderNumber}? Quyền lợi sẽ được kích hoạt ngay.`)) return
     setBusy(order.id)
+    dataVersionRef.current += 1
     try {
-      const { data } = await api.patch<ApiResponse<unknown>>(`/orders/${order.id}/payments/${paymentId}/confirm`)
+      const { data } = await api.patch<ApiResponse<PaymentActionResult>>(`/orders/${order.id}/payments/${paymentId}/confirm`)
+      applyPayment(order.id, data.data.payment, data.data.status)
       toast.success(data.message)
-      await load(true)
+      void load(true)
     } catch (error) {
       toast.error(getErrorMessage(error))
     } finally {
@@ -97,10 +126,12 @@ export function OrdersPage() {
       return
     }
     setBusy(order.id)
+    dataVersionRef.current += 1
     try {
-      const { data } = await api.patch<ApiResponse<unknown>>(`/orders/${order.id}/payments/${paymentId}/reject`, { reason: reason.trim() })
+      const { data } = await api.patch<ApiResponse<OrderPayment>>(`/orders/${order.id}/payments/${paymentId}/reject`, { reason: reason.trim() })
+      applyPayment(order.id, data.data)
       toast.success(data.message)
-      await load(true)
+      void load(true)
     } catch (error) {
       toast.error(getErrorMessage(error))
     } finally {
@@ -111,10 +142,12 @@ export function OrdersPage() {
   const cancel = async (order: Order) => {
     if (!window.confirm(`Hủy đơn ${order.orderNumber}? Thao tác này không thể hoàn tác.`)) return
     setBusy(order.id)
+    dataVersionRef.current += 1
     try {
-      const { data } = await api.patch<ApiResponse<unknown>>(`/orders/${order.id}/cancel`)
+      const { data } = await api.patch<ApiResponse<{ status: Order['status'] }>>(`/orders/${order.id}/cancel`)
+      setOrders((current) => current.map((item) => item.id === order.id ? { ...item, status: data.data.status } : item))
       toast.success(data.message)
-      await load(true)
+      void load(true)
     } catch (error) {
       toast.error(getErrorMessage(error))
     } finally {
