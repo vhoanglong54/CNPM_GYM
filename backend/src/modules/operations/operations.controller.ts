@@ -80,14 +80,18 @@ export class OperationsController {
   ) {
     return this.wrap(this.service.checkinEligibility(memberCode, user));
   }
-  @Post('checkins') checkin(
+  @Post('checkins') async checkin(
     @Body() dto: CheckinDto,
     @CurrentUser() user: AuthUser,
   ) {
-    return this.wrap(
-      this.service.checkin(dto, user),
-      'Check-in thành công. Chúc bạn tập luyện hiệu quả!',
-    );
+    const data = await this.service.checkin(dto, user);
+    return {
+      success: true,
+      data,
+      message: data.alreadyCheckedIn
+        ? 'Hội viên đã check-in hôm nay; hệ thống không ghi thêm lượt.'
+        : 'Check-in thành công. Chúc bạn tập luyện hiệu quả!',
+    };
   }
   private async wrap(data: unknown, message?: string) {
     return { success: true, data: await data, ...(message ? { message } : {}) };

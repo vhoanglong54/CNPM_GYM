@@ -1,5 +1,10 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
-import { BookingStatus, MembershipType, RoleCode } from '@prisma/client';
+import {
+  BookingStatus,
+  MembershipType,
+  Prisma,
+  RoleCode,
+} from '@prisma/client';
 import { ApiError } from '../../common/api-error.js';
 import type { AuthUser } from '../../common/auth.types.js';
 import { appDayBounds, formatAppDateTime } from '../../common/date-time.js';
@@ -15,6 +20,12 @@ import { SlotSort } from './operations.dto.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 
 const MEMBER_CANCELLATION_CUTOFF_MS = 4 * 60 * 60 * 1000;
+const CHECKIN_TRANSACTION_MAX_ATTEMPTS = 3;
+const CHECKIN_TRANSACTION_OPTIONS = {
+  isolationLevel: 'Serializable' as const,
+  maxWait: 10_000,
+  timeout: 20_000,
+};
 
 @Injectable()
 export class OperationsService {
@@ -752,92 +763,186 @@ export class OperationsService {
         'MEMBERSHIP_INELIGIBLE',
         'Tài khoản hội viên không hoạt động.',
       );
-    const existing = await this.prisma.checkin.findUnique({
-      where: { idempotencyKey: dto.idempotencyKey },
-    });
-    if (existing)
-      throw new ApiError(
-        'CHECKIN_DUPLICATE',
-        'Lượt check-in này đã được ghi nhận.',
-        HttpStatus.CONFLICT,
-      );
     const { start: startOfToday, end: startOfTomorrow } = appDayBounds();
-    const checkedInToday = await this.prisma.checkin.findFirst({
-      where: {
-        memberId: member.id,
-        checkedInAt: { gte: startOfToday, lt: startOfTomorrow },
-      },
-    });
-    if (checkedInToday)
-      throw new ApiError(
-        'CHECKIN_ALREADY_TODAY',
-        'Hội viên này đã check-in trong ngày hôm nay.',
-        HttpStatus.CONFLICT,
-      );
-
-    return this.prisma.$transaction(
-      async (tx) => {
-        const memberships = await tx.memberMembership.findMany({
-          where: {
-            memberId: member.id,
-            isPaused: false,
-            startDate: { lte: new Date() },
-            OR: [{ endDate: null }, { endDate: { gte: new Date() } }],
-          },
-          include: { plan: true },
-          orderBy: { createdAt: 'desc' },
-        });
-        const eligibleMemberships = memberships
-          .filter(
-            (item) =>
-              item.plan.type === MembershipType.DURATION ||
-              item.visitsTotal === null ||
-              item.visitsUsed < item.visitsTotal,
-          )
-          .sort((first, second) => {
-            const typeDifference =
-              Number(first.plan.type !== MembershipType.DURATION) -
-              Number(second.plan.type !== MembershipType.DURATION);
-            if (typeDifference) return typeDifference;
-            return (
-              (first.endDate?.getTime() ?? Number.MAX_SAFE_INTEGER) -
-              (second.endDate?.getTime() ?? Number.MAX_SAFE_INTEGER)
-            );
-          });
-        const membership = dto.memberMembershipId
-          ? eligibleMemberships.find(
-              (item) => item.id === dto.memberMembershipId,
-            )
-          : eligibleMemberships[0];
-        if (!membership)
+    const result = await this.runCheckinTransaction(async (tx) => {
+      const replayedCheckin = await tx.checkin.findUnique({
+        where: { idempotencyKey: dto.idempotencyKey },
+        include: { memberMembership: { include: { plan: true } } },
+      });
+      if (replayedCheckin) {
+        if (replayedCheckin.memberId !== member.id)
           throw new ApiError(
-            'MEMBERSHIP_INELIGIBLE',
-            'Gói được chọn không đủ điều kiện check-in.',
+            'CHECKIN_IDEMPOTENCY_CONFLICT',
+            'Khóa xác nhận check-in đã được sử dụng.',
+            HttpStatus.CONFLICT,
           );
-        const checkin = await tx.checkin.create({
-          data: {
-            memberId: member.id,
-            memberMembershipId: membership.id,
-            idempotencyKey: dto.idempotencyKey,
-            recordedById: user.id,
-          },
-        });
-        if (membership.visitsTotal !== null)
-          await tx.memberMembership.update({
-            where: { id: membership.id },
-            data: { visitsUsed: { increment: 1 } },
-          });
         return {
-          ...checkin,
+          ...replayedCheckin,
           member: {
             memberCode: member.memberCode,
             fullName: member.user.fullName,
           },
-          plan: membership.plan.name,
+          plan: replayedCheckin.memberMembership.plan.name,
+          alreadyCheckedIn: false,
+          replayed: true,
         };
-      },
-      { isolationLevel: 'Serializable' },
+      }
+
+      const checkedInToday = await tx.checkin.findFirst({
+        where: {
+          memberId: member.id,
+          checkedInAt: { gte: startOfToday, lt: startOfTomorrow },
+        },
+        include: { memberMembership: { include: { plan: true } } },
+        orderBy: { checkedInAt: 'asc' },
+      });
+      if (checkedInToday)
+        return {
+          ...checkedInToday,
+          member: {
+            memberCode: member.memberCode,
+            fullName: member.user.fullName,
+          },
+          plan: checkedInToday.memberMembership.plan.name,
+          alreadyCheckedIn: true,
+          replayed: false,
+        };
+
+      const now = new Date();
+      const memberships = await tx.memberMembership.findMany({
+        where: {
+          memberId: member.id,
+          isPaused: false,
+          startDate: { lte: now },
+          OR: [{ endDate: null }, { endDate: { gte: now } }],
+        },
+        include: { plan: true },
+        orderBy: { createdAt: 'desc' },
+      });
+      const eligibleMemberships = memberships
+        .filter(
+          (item) =>
+            item.plan.type === MembershipType.DURATION ||
+            item.visitsTotal === null ||
+            item.visitsUsed < item.visitsTotal,
+        )
+        .sort((first, second) => {
+          const typeDifference =
+            Number(first.plan.type !== MembershipType.DURATION) -
+            Number(second.plan.type !== MembershipType.DURATION);
+          if (typeDifference) return typeDifference;
+          return (
+            (first.endDate?.getTime() ?? Number.MAX_SAFE_INTEGER) -
+            (second.endDate?.getTime() ?? Number.MAX_SAFE_INTEGER)
+          );
+        });
+      const membership = dto.memberMembershipId
+        ? eligibleMemberships.find((item) => item.id === dto.memberMembershipId)
+        : eligibleMemberships[0];
+      if (!membership)
+        throw new ApiError(
+          'MEMBERSHIP_INELIGIBLE',
+          'Gói được chọn không đủ điều kiện check-in.',
+        );
+      const checkin = await tx.checkin.create({
+        data: {
+          memberId: member.id,
+          memberMembershipId: membership.id,
+          idempotencyKey: dto.idempotencyKey,
+          recordedById: user.id,
+        },
+      });
+      if (membership.visitsTotal !== null)
+        await tx.memberMembership.update({
+          where: { id: membership.id },
+          data: { visitsUsed: { increment: 1 } },
+        });
+      return {
+        ...checkin,
+        member: {
+          memberCode: member.memberCode,
+          fullName: member.user.fullName,
+        },
+        plan: membership.plan.name,
+        alreadyCheckedIn: false,
+        replayed: false,
+      };
+    });
+
+    const todayPtAppointments = await this.listTodayPtAppointments(
+      member.id,
+      startOfToday,
+      startOfTomorrow,
     );
+    return { ...result, todayPtAppointments };
+  }
+
+  private async listTodayPtAppointments(
+    memberId: string,
+    startOfToday: Date,
+    startOfTomorrow: Date,
+  ) {
+    const bookings = await this.prisma.ptBooking.findMany({
+      where: {
+        memberId,
+        status: {
+          in: [
+            BookingStatus.PENDING,
+            BookingStatus.CONFIRMED,
+            BookingStatus.CANCEL_REQUESTED,
+          ],
+        },
+        slot: {
+          startsAt: { gte: startOfToday, lt: startOfTomorrow },
+        },
+      },
+      include: {
+        slot: {
+          include: {
+            trainer: {
+              include: { user: { select: { id: true, fullName: true } } },
+            },
+          },
+        },
+      },
+    });
+    return bookings
+      .sort(
+        (first, second) =>
+          first.slot.startsAt.getTime() - second.slot.startsAt.getTime(),
+      )
+      .map((booking) => ({
+        id: booking.id,
+        status: booking.status,
+        startsAt: booking.slot.startsAt,
+        endsAt: booking.slot.endsAt,
+        trainer: booking.slot.trainer.user,
+      }));
+  }
+
+  private async runCheckinTransaction<T>(
+    operation: (tx: Prisma.TransactionClient) => Promise<T>,
+  ): Promise<T> {
+    for (
+      let attempt = 1;
+      attempt <= CHECKIN_TRANSACTION_MAX_ATTEMPTS;
+      attempt += 1
+    ) {
+      try {
+        return await this.prisma.$transaction(
+          operation,
+          CHECKIN_TRANSACTION_OPTIONS,
+        );
+      } catch (error) {
+        const retryable =
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          (error.code === 'P2002' || error.code === 'P2034');
+        if (!retryable || attempt === CHECKIN_TRANSACTION_MAX_ATTEMPTS)
+          throw error;
+        await new Promise((resolve) => setTimeout(resolve, attempt * 100));
+      }
+    }
+    throw new Error('Check-in transaction retry loop ended unexpectedly.');
   }
 
   async checkinEligibility(memberCodeValue: string, user: AuthUser) {
@@ -851,6 +956,7 @@ export class OperationsService {
         HttpStatus.FORBIDDEN,
       );
     const memberCode = memberCodeValue.trim().toUpperCase();
+    const { start: startOfToday, end: startOfTomorrow } = appDayBounds();
     const member = await this.prisma.memberProfile.findUnique({
       where: { memberCode },
       include: {
@@ -862,6 +968,14 @@ export class OperationsService {
             OR: [{ endDate: null }, { endDate: { gte: new Date() } }],
           },
           include: { plan: true },
+        },
+        checkins: {
+          where: {
+            checkedInAt: { gte: startOfToday, lt: startOfTomorrow },
+          },
+          include: { memberMembership: { include: { plan: true } } },
+          orderBy: { checkedInAt: 'asc' },
+          take: 1,
         },
       },
     });
@@ -876,6 +990,7 @@ export class OperationsService {
         'MEMBERSHIP_INELIGIBLE',
         'Tài khoản hội viên không hoạt động.',
       );
+    const checkedInToday = member.checkins[0];
     const memberships = member.memberships
       .filter(
         (item) =>
@@ -893,6 +1008,13 @@ export class OperationsService {
           (second.endDate?.getTime() ?? Number.MAX_SAFE_INTEGER)
         );
       });
+    if (
+      checkedInToday &&
+      !memberships.some(
+        (membership) => membership.id === checkedInToday.memberMembershipId,
+      )
+    )
+      memberships.unshift(checkedInToday.memberMembership);
     if (!memberships.length)
       throw new ApiError(
         'MEMBERSHIP_INELIGIBLE',
@@ -921,7 +1043,9 @@ export class OperationsService {
             )
           : null,
       })),
-      recommendedMembershipId: memberships[0].id,
+      recommendedMembershipId:
+        checkedInToday?.memberMembershipId ?? memberships[0].id,
+      alreadyCheckedIn: Boolean(checkedInToday),
     };
   }
 
