@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react'
-import { Plus, Search, ShieldCheck, Trash2, UserCheck, UserX } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
+import { Plus, Search, ShieldCheck, Star, Trash2, UserCheck, UserX } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { api, getErrorMessage } from '../lib/api'
 import { formatAppDate } from '../lib/dateTime'
@@ -22,6 +23,7 @@ interface StaffRow {
   fullName: string
   status: 'ACTIVE' | 'INACTIVE' | 'UNVERIFIED'
   roles: Array<{ role: { code: Role; name: string } }>
+  rating: { average?: number | null; count: number }
 }
 
 export function MembersPage() {
@@ -34,7 +36,18 @@ export function MembersPage() {
     .then(({ data }) => setRows(data.data))
     .catch((error) => toast.error(getErrorMessage(error))), [])
 
-  useEffect(() => { void load() }, [load])
+  useEffect(() => {
+    void load()
+    const timer = window.setInterval(() => void load(), 10_000)
+    const refresh = () => { if (!document.hidden) void load() }
+    window.addEventListener('focus', refresh)
+    document.addEventListener('visibilitychange', refresh)
+    return () => {
+      window.clearInterval(timer)
+      window.removeEventListener('focus', refresh)
+      document.removeEventListener('visibilitychange', refresh)
+    }
+  }, [load])
 
   const remove = async (member: MemberRow) => {
     if (!window.confirm(`Xóa tài khoản ${member.fullName} (${member.email})? Hành động này không thể hoàn tác.`)) return
@@ -76,12 +89,38 @@ export function StaffPage() {
   const [rows, setRows] = useState<StaffRow[]>([])
   const [show, setShow] = useState(false)
   const [busy, setBusy] = useState('')
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ACTIVE')
+  const [sort, setSort] = useState<'NAME' | 'RATING' | 'REVIEWS'>('NAME')
 
   const load = useCallback(() => api.get<ApiResponse<StaffRow[]>>('/users/staff')
     .then(({ data }) => setRows(data.data))
     .catch((error) => toast.error(getErrorMessage(error))), [])
 
-  useEffect(() => { void load() }, [load])
+  useEffect(() => {
+    void load()
+    const timer = window.setInterval(() => void load(), 10_000)
+    const refresh = () => { if (!document.hidden) void load() }
+    window.addEventListener('focus', refresh)
+    document.addEventListener('visibilitychange', refresh)
+    return () => {
+      window.clearInterval(timer)
+      window.removeEventListener('focus', refresh)
+      document.removeEventListener('visibilitychange', refresh)
+    }
+  }, [load])
+
+  const visible = useMemo(() => rows
+    .filter((staff) => statusFilter === 'ALL' || staff.status === statusFilter)
+    .sort((first, second) => {
+      if (sort === 'RATING') return (second.rating.average ?? -1) - (first.rating.average ?? -1) || second.rating.count - first.rating.count
+      if (sort === 'REVIEWS') return second.rating.count - first.rating.count
+      return first.fullName.localeCompare(second.fullName, 'vi')
+    }), [rows, sort, statusFilter])
+
+  const changeSort = (value: 'NAME' | 'RATING' | 'REVIEWS') => {
+    setSort(value)
+    if (value !== 'NAME') setStatusFilter('ACTIVE')
+  }
 
   const changeStatus = async (staff: StaffRow) => {
     const nextStatus = staff.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE'
@@ -104,7 +143,15 @@ export function StaffPage() {
       <button className="btn btn-primary" onClick={() => setShow(!show)}><Plus /> Thêm nhân sự</button>
     </Header>
     {show && <StaffForm onDone={() => { setShow(false); void load() }} />}
-    <div className="people-grid">{rows.map((staff) => {
+    <div className="card staff-directory-tools">
+      <div className="booking-filters" role="group" aria-label="Lọc trạng thái nhân viên">
+        <button className={statusFilter === 'ACTIVE' ? 'active' : ''} onClick={() => setStatusFilter('ACTIVE')}>Còn làm việc<span>{rows.filter((item) => item.status === 'ACTIVE').length}</span></button>
+        <button className={statusFilter === 'INACTIVE' ? 'active' : ''} onClick={() => { setStatusFilter('INACTIVE'); setSort('NAME') }}>Đã nghỉ việc<span>{rows.filter((item) => item.status === 'INACTIVE').length}</span></button>
+        <button className={statusFilter === 'ALL' ? 'active' : ''} onClick={() => { setStatusFilter('ALL'); setSort('NAME') }}>Tất cả<span>{rows.length}</span></button>
+      </div>
+      <label>Sắp xếp<select value={sort} onChange={(event) => changeSort(event.target.value as 'NAME' | 'RATING' | 'REVIEWS')}><option value="NAME">Tên A–Z</option><option value="RATING">Đánh giá cao nhất · đang làm</option><option value="REVIEWS">Nhiều đánh giá nhất · đang làm</option></select></label>
+    </div>
+    <div className="people-grid">{visible.map((staff) => {
       const canManage = staff.roles.some(({ role }) => role.code === 'RECEPTIONIST' || role.code === 'TRAINER')
       return <article className={`person-card ${staff.status !== 'ACTIVE' ? 'staff-inactive' : ''}`} key={staff.id}>
         <div className="person-avatar">{staff.fullName[0]}</div>
@@ -112,6 +159,8 @@ export function StaffPage() {
         <h3>{staff.fullName}</h3>
         <p>{staff.email}</p>
         <div className="role-line"><ShieldCheck />{staff.roles.map(({ role }) => role.name).join(', ')}</div>
+        {canManage && <div className="staff-rating-line"><Star /><strong>{staff.rating.count ? staff.rating.average?.toFixed(1) : '—'}</strong><span>{staff.rating.count} đánh giá</span></div>}
+        {canManage && <Link className="btn btn-wide btn-ghost" to={`/staff-reviews?staff=${staff.id}`}><Star /> Xem đánh giá</Link>}
         {canManage && <button className={`btn btn-wide staff-status-action ${staff.status === 'ACTIVE' ? 'btn-danger' : 'btn-confirm'}`} disabled={busy === staff.id} onClick={() => void changeStatus(staff)}>
           {staff.status === 'ACTIVE' ? <><UserX /> Cho nghỉ việc</> : <><UserCheck /> Khôi phục tài khoản</>}
         </button>}

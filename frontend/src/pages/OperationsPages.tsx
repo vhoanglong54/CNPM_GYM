@@ -19,12 +19,13 @@ import {
 import { QRCodeSVG } from 'qrcode.react'
 import QrScanner from 'qr-scanner'
 import toast from 'react-hot-toast'
+import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { api, getErrorMessage } from '../lib/api'
 import { appDateParts, appDayIsoRange, appTodayKey, formatAppDate, formatAppDateTime, formatAppTime } from '../lib/dateTime'
 import type { ApiResponse, Profile } from '../types'
 
-type BookingStatus = 'PENDING' | 'CONFIRMED' | 'COMPLETED' | 'REJECTED' | 'CANCELLED' | 'NO_SHOW'
+type BookingStatus = 'PENDING' | 'CONFIRMED' | 'CANCEL_REQUESTED' | 'COMPLETED' | 'REJECTED' | 'CANCELLED' | 'NO_SHOW'
 type BookingFilter = 'ACTIVE' | 'ALL' | BookingStatus
 type SlotSort = 'SOONEST' | 'RATING' | 'REVIEW_COUNT'
 
@@ -33,7 +34,7 @@ interface Slot {
   startsAt: string
   endsAt: string
   bookings: Array<{ id: string; status: BookingStatus }>
-  trainer: { id: string; user: { fullName: string }; rating: { average?: number; count: number } }
+  trainer: { id: string; user: { id: string; fullName: string }; rating: { average?: number; count: number } }
 }
 
 interface Booking {
@@ -41,14 +42,16 @@ interface Booking {
   status: BookingStatus
   note?: string
   resolutionReason?: string
+  cancellationReason?: string
+  cancellationRequestedAt?: string
+  cancellationRequestedBy?: { fullName: string; email: string }
   slot: {
     startsAt: string
     endsAt: string
-    trainer: { user: { fullName: string } }
+    trainer: { user: { id: string; fullName: string } }
   }
   member: { user: { fullName: string; email: string } }
   memberPtPackage: { package: { name: string } }
-  review?: { rating: number; comment?: string }
 }
 
 interface Checkin {
@@ -76,6 +79,7 @@ interface CheckinEligibility {
 const statusLabels: Record<BookingStatus, string> = {
   PENDING: 'Chờ PT xác nhận',
   CONFIRMED: 'Đã xác nhận',
+  CANCEL_REQUESTED: 'Chờ duyệt hủy',
   COMPLETED: 'Đã hoàn thành',
   REJECTED: 'Bị từ chối',
   CANCELLED: 'Đã hủy',
@@ -87,6 +91,7 @@ const filterLabels: Array<{ value: BookingFilter; label: string }> = [
   { value: 'ALL', label: 'Tất cả' },
   { value: 'PENDING', label: 'Chờ xác nhận' },
   { value: 'CONFIRMED', label: 'Đã xác nhận' },
+  { value: 'CANCEL_REQUESTED', label: 'Chờ duyệt hủy' },
   { value: 'COMPLETED', label: 'Hoàn thành' },
   { value: 'REJECTED', label: 'Bị từ chối' },
   { value: 'CANCELLED', label: 'Đã hủy' },
@@ -106,14 +111,14 @@ export function SchedulePage() {
   const [slotDate, setSlotDate] = useState('')
   const [slotSort, setSlotSort] = useState<SlotSort>('SOONEST')
   const [busy, setBusy] = useState('')
-  const [reviewTarget, setReviewTarget] = useState<Booking | null>(null)
-  const [reviewRating, setReviewRating] = useState(5)
-  const [reviewComment, setReviewComment] = useState('')
+  const [bookingAction, setBookingAction] = useState<{ booking: Booking; status: BookingStatus; title: string } | null>(null)
+  const [actionReason, setActionReason] = useState('')
   const loadRequestRef = useRef(0)
   const lastAppliedRequestRef = useRef(0)
   const dataVersionRef = useRef(0)
   const trainer = user?.roles.includes('TRAINER')
   const member = user?.roles.includes('MEMBER')
+  const owner = user?.roles.includes('OWNER')
 
   const load = useCallback(async (silent = false) => {
     const requestId = ++loadRequestRef.current
@@ -207,24 +212,25 @@ export function SchedulePage() {
     }
   }
 
-  const updateBooking = async (id: string, status: BookingStatus) => {
-    let reason: string | undefined
-    if (status === 'CANCELLED' || status === 'REJECTED' || status === 'NO_SHOW') {
-      const label = status === 'REJECTED' ? 'từ chối' : status === 'NO_SHOW' ? 'đánh dấu vắng mặt' : 'hủy'
-      const input = window.prompt(`Nhập lý do ${label} lịch PT:`)
-      if (input === null) return
-      if (input.trim().length < 3) {
-        toast.error('Vui lòng nhập lý do rõ ràng.')
-        return
-      }
-      reason = input.trim()
-    }
-    setBusy(id)
+  const beginBookingAction = (booking: Booking, status: BookingStatus) => {
+    const needsReason = status === 'REJECTED' || status === 'NO_SHOW' ||
+      (status === 'CANCELLED' && booking.status !== 'CANCEL_REQUESTED') ||
+      (status === 'CONFIRMED' && booking.status === 'CANCEL_REQUESTED')
+    if (!needsReason) return void updateBooking(booking, status)
+    const title = status === 'REJECTED' ? 'Từ chối yêu cầu đặt lịch' : status === 'NO_SHOW' ? 'Ghi nhận Hội viên vắng mặt' : status === 'CONFIRMED' ? 'Từ chối yêu cầu hủy muộn' : member && booking.status === 'CONFIRMED' ? 'Hủy hoặc gửi yêu cầu hủy' : 'Hủy lịch PT'
+    setBookingAction({ booking, status, title })
+    setActionReason('')
+  }
+
+  const updateBooking = async (booking: Booking, status: BookingStatus, reason?: string) => {
+    setBusy(booking.id)
     dataVersionRef.current += 1
     try {
-      const { data } = await api.patch<ApiResponse<{ status: BookingStatus; resolutionReason?: string }>>(`/operations/bookings/${id}/status`, { status, reason })
-      setBookings((current) => current.map((booking) => booking.id === id ? { ...booking, status: data.data.status, resolutionReason: data.data.resolutionReason ?? reason } : booking))
+      const { data } = await api.patch<ApiResponse<Partial<Booking> & { status: BookingStatus }>>(`/operations/bookings/${booking.id}/status`, { status, reason })
+      setBookings((current) => current.map((item) => item.id === booking.id ? { ...item, ...data.data } : item))
       toast.success(data.message)
+      setBookingAction(null)
+      setActionReason('')
       void load(true)
     } catch (error) {
       toast.error(getErrorMessage(error))
@@ -233,31 +239,13 @@ export function SchedulePage() {
     }
   }
 
-  const openReview = (booking: Booking) => {
-    setReviewTarget(booking)
-    setReviewRating(5)
-    setReviewComment('')
-  }
-
-  const reviewBooking = async (event: FormEvent) => {
+  const submitBookingAction = (event: FormEvent) => {
     event.preventDefault()
-    if (!reviewTarget) return
-    setBusy(reviewTarget.id)
-    dataVersionRef.current += 1
-    try {
-      const { data } = await api.post<ApiResponse<{ rating: number; comment?: string }>>(`/operations/bookings/${reviewTarget.id}/review`, {
-        rating: reviewRating,
-        comment: reviewComment.trim() || undefined,
-      })
-      setBookings((current) => current.map((booking) => booking.id === reviewTarget.id ? { ...booking, review: data.data } : booking))
-      toast.success(data.message)
-      setReviewTarget(null)
-      void load(true)
-    } catch (error) {
-      toast.error(getErrorMessage(error))
-    } finally {
-      setBusy('')
+    if (!bookingAction || actionReason.trim().length < 3) {
+      toast.error('Vui lòng nhập lý do rõ ràng, tối thiểu 3 ký tự.')
+      return
     }
+    void updateBooking(bookingAction.booking, bookingAction.status, actionReason.trim())
   }
 
   const closeSlot = async (slot: Slot) => {
@@ -276,9 +264,8 @@ export function SchedulePage() {
     }
   }
 
-  const activeCount = bookings.filter((item) => ['PENDING', 'CONFIRMED'].includes(item.status)).length
+  const activeCount = bookings.filter((item) => ['PENDING', 'CONFIRMED', 'CANCEL_REQUESTED'].includes(item.status)).length
   const completedCount = bookings.filter((item) => item.status === 'COMPLETED').length
-  const pendingReviews = member ? bookings.filter((item) => item.status === 'COMPLETED' && !item.review) : []
   const remainingSessions = eligiblePackages.reduce((total, item) => total + item.sessionsTotal - item.sessionsUsed - item.sessionsReserved, 0)
 
   return <>
@@ -303,18 +290,6 @@ export function SchedulePage() {
 
     {showSlotForm && <SlotForm onDone={() => { setShowSlotForm(false); void load() }} />}
 
-    {pendingReviews.length > 0 && <div className="card review-reminder">
-      <div><Star /><span><strong>Bạn có {pendingReviews.length} buổi PT chưa đánh giá</strong><small>Đánh giá giúp Hội viên khác chọn PT phù hợp.</small></span></div>
-      <button className="btn btn-primary" onClick={() => openReview(pendingReviews[0])}>Đánh giá ngay</button>
-    </div>}
-
-    {reviewTarget && <form className="card review-composer" onSubmit={reviewBooking}>
-      <div className="booking-composer-head"><div><span className="eyebrow dark">ĐÁNH GIÁ HUẤN LUYỆN VIÊN</span><h3>{reviewTarget.slot.trainer.user.fullName}</h3><p>{formatDate(reviewTarget.slot.startsAt)} · {formatTime(reviewTarget.slot.startsAt)}</p></div><button type="button" className="icon-button" aria-label="Đóng đánh giá" onClick={() => setReviewTarget(null)}><X /></button></div>
-      <fieldset className="star-picker"><legend>Mức độ hài lòng</legend>{[1, 2, 3, 4, 5].map((rating) => <button type="button" key={rating} className={rating <= reviewRating ? 'selected' : ''} aria-label={`${rating} sao`} onClick={() => setReviewRating(rating)}><Star /></button>)}<strong>{reviewRating}/5 sao</strong></fieldset>
-      <label>Nhận xét <small>(không bắt buộc)</small><textarea maxLength={500} value={reviewComment} onChange={(event) => setReviewComment(event.target.value)} placeholder="Chia sẻ trải nghiệm về buổi tập và PT..." /></label>
-      <div className="booking-composer-actions"><button type="button" className="btn btn-ghost" onClick={() => setReviewTarget(null)}>Để sau</button><button className="btn btn-primary" disabled={busy === reviewTarget.id}><Star /> {busy === reviewTarget.id ? 'Đang gửi...' : 'Gửi đánh giá'}</button></div>
-    </form>}
-
     <div className="section-heading schedule-section-heading">
       <div>
         <span className="eyebrow dark">{member ? 'CHỌN THỜI GIAN' : trainer ? 'LỊCH RẢNH CỦA TÔI' : 'KHUNG GIỜ ĐANG MỞ'}</span>
@@ -333,8 +308,7 @@ export function SchedulePage() {
         <div className="slot-date"><span>{dateParts.weekday}</span><b>{dateParts.day}</b><small>TH {dateParts.month}</small></div>
         <div className="slot-detail">
           <strong>{formatTime(slot.startsAt)} – {formatTime(slot.endsAt)}</strong>
-          <small><UserRound /> {slot.trainer.user.fullName}</small>
-          <small className="trainer-rating"><Star /> {slot.trainer.rating.count ? `${slot.trainer.rating.average?.toFixed(1)} (${slot.trainer.rating.count} đánh giá)` : 'Chưa có đánh giá'}</small>
+          {(member || owner) ? <><Link className="trainer-profile-link" to={`/staff-reviews?staff=${slot.trainer.user.id}`}><UserRound /> {slot.trainer.user.fullName}</Link><Link className="trainer-rating" to={`/staff-reviews?staff=${slot.trainer.user.id}`}><Star /> {slot.trainer.rating.count ? `${slot.trainer.rating.average?.toFixed(1)} (${slot.trainer.rating.count} đánh giá)` : 'Chưa có đánh giá · xem hồ sơ'}</Link></> : <><small><UserRound /> {slot.trainer.user.fullName}</small><small className="trainer-rating"><Star /> {slot.trainer.rating.count ? `${slot.trainer.rating.average?.toFixed(1)} (${slot.trainer.rating.count} đánh giá)` : 'Chưa có đánh giá'}</small></>}
           <span>{slot.bookings.length ? 'Đã có hội viên đặt' : 'Sẵn sàng nhận lịch'}</span>
         </div>
         {member && <button className="btn btn-small btn-dark" onClick={() => openBooking(slot)}>Chọn lịch</button>}
@@ -358,21 +332,27 @@ export function SchedulePage() {
     <div className="section-heading spaced booking-heading">
       <div><span className="eyebrow dark">TIẾN TRÌNH LỊCH HẸN</span><h3>{member ? 'Lịch của tôi' : trainer ? 'Yêu cầu từ hội viên' : 'Danh sách buổi tập'}</h3></div>
     </div>
+    {bookingAction && <form className="card booking-action-form" onSubmit={submitBookingAction}>
+      <div><span className="eyebrow dark">XÁC NHẬN THAO TÁC</span><h3>{bookingAction.title}</h3><p>{member && bookingAction.booking.status === 'CONFIRMED' ? 'Nếu lịch còn dưới 4 giờ, hệ thống sẽ giữ nguyên slot và gửi yêu cầu để PT hoặc Chủ phòng duyệt.' : bookingAction.status === 'CONFIRMED' ? 'Lịch sẽ trở lại trạng thái Đã xác nhận và Hội viên nhận được lý do.' : bookingAction.status === 'NO_SHOW' ? 'Thao tác này sẽ trừ một buổi PT sau khi ca đã kết thúc.' : 'Bên còn lại sẽ nhận được thông báo kèm lý do.'}</p></div>
+      <label>Lý do<textarea autoFocus required minLength={3} maxLength={500} value={actionReason} onChange={(event) => setActionReason(event.target.value)} placeholder="Nhập lý do rõ ràng..." /></label>
+      <div className="booking-composer-actions"><button type="button" className="btn btn-ghost" onClick={() => setBookingAction(null)}>Quay lại</button><button className="btn btn-primary" disabled={busy === bookingAction.booking.id}><CheckCircle2 /> {busy === bookingAction.booking.id ? 'Đang xử lý...' : 'Xác nhận'}</button></div>
+    </form>}
     <div className="booking-filters" role="group" aria-label="Lọc trạng thái lịch">
       {filterLabels.map((item) => <button key={item.value} className={filter === item.value ? 'active' : ''} onClick={() => setFilter(item.value)}>{item.label}<span>{item.value === 'ALL' ? bookings.length : item.value === 'ACTIVE' ? activeCount : bookings.filter((booking) => booking.status === item.value).length}</span></button>)}
     </div>
     <div className="card booking-list">
       {visibleBookings.length ? visibleBookings.map((item) => <div className="booking-row" key={item.id}>
         <div className="calendar-tile"><b>{appDateParts(item.slot.startsAt).day}</b><span>TH {appDateParts(item.slot.startsAt).month}</span></div>
-        <div className="grow booking-person"><strong>{member ? item.slot.trainer.user.fullName : item.member.user.fullName}</strong><small>{formatDate(item.slot.startsAt)} · {formatTime(item.slot.startsAt)} – {formatTime(item.slot.endsAt)}</small><small>{item.memberPtPackage.package.name}</small>{item.note && <p><MessageSquareText /> {item.note}</p>}{item.resolutionReason && <p className="resolution-reason"><XCircle /> {item.resolutionReason}</p>}{item.review && <p className="booking-review"><Star /> {item.review.rating}/5{item.review.comment ? ` · ${item.review.comment}` : ''}</p>}</div>
+        <div className="grow booking-person"><strong>{member ? item.slot.trainer.user.fullName : item.member.user.fullName}</strong><small>{formatDate(item.slot.startsAt)} · {formatTime(item.slot.startsAt)} – {formatTime(item.slot.endsAt)}</small><small>{item.memberPtPackage.package.name}</small>{item.note && <p><MessageSquareText /> {item.note}</p>}{item.cancellationReason && <p className="cancellation-request-note"><Clock3 /> Yêu cầu hủy: {item.cancellationReason}</p>}{item.resolutionReason && <p className="resolution-reason"><XCircle /> {item.resolutionReason}</p>}</div>
         <span className={`status ${item.status.toLowerCase()}`}>{statusLabels[item.status]}</span>
         <div className="row-actions">
-          {trainer && item.status === 'PENDING' && <button className="btn btn-small btn-confirm" disabled={busy === item.id} onClick={() => void updateBooking(item.id, 'CONFIRMED')}><CheckCircle2 /> Xác nhận</button>}
-          {trainer && item.status === 'PENDING' && <button className="btn btn-small btn-danger" disabled={busy === item.id} onClick={() => void updateBooking(item.id, 'REJECTED')}><XCircle /> Từ chối</button>}
-          {trainer && item.status === 'CONFIRMED' && <button className="btn btn-small btn-primary" disabled={busy === item.id} onClick={() => void updateBooking(item.id, 'COMPLETED')}>Hoàn thành</button>}
-          {trainer && item.status === 'CONFIRMED' && <button className="btn btn-small btn-ghost" disabled={busy === item.id} onClick={() => void updateBooking(item.id, 'NO_SHOW')}>Vắng mặt</button>}
-          {member && item.status === 'COMPLETED' && !item.review && <button className="btn btn-small btn-ghost" disabled={busy === item.id} onClick={() => openReview(item)}><Star /> Đánh giá</button>}
-          {(member || trainer) && ['PENDING', 'CONFIRMED'].includes(item.status) && <button className="icon-action bad" disabled={busy === item.id} title="Hủy lịch" onClick={() => void updateBooking(item.id, 'CANCELLED')}><XCircle /></button>}
+          {trainer && item.status === 'PENDING' && <button className="btn btn-small btn-confirm" disabled={busy === item.id} onClick={() => beginBookingAction(item, 'CONFIRMED')}><CheckCircle2 /> Xác nhận</button>}
+          {trainer && item.status === 'PENDING' && <button className="btn btn-small btn-danger" disabled={busy === item.id} onClick={() => beginBookingAction(item, 'REJECTED')}><XCircle /> Từ chối</button>}
+          {trainer && item.status === 'CONFIRMED' && <button className="btn btn-small btn-primary" disabled={busy === item.id} onClick={() => beginBookingAction(item, 'COMPLETED')}>Hoàn thành</button>}
+          {trainer && item.status === 'CONFIRMED' && <button className="btn btn-small btn-ghost" disabled={busy === item.id} onClick={() => beginBookingAction(item, 'NO_SHOW')}>Vắng mặt</button>}
+          {(trainer || owner) && item.status === 'CANCEL_REQUESTED' && <button className="btn btn-small btn-confirm" disabled={busy === item.id} onClick={() => beginBookingAction(item, 'CANCELLED')}><CheckCircle2 /> Chấp nhận hủy</button>}
+          {(trainer || owner) && item.status === 'CANCEL_REQUESTED' && <button className="btn btn-small btn-danger" disabled={busy === item.id} onClick={() => beginBookingAction(item, 'CONFIRMED')}><XCircle /> Từ chối hủy</button>}
+          {(member || trainer) && ['PENDING', 'CONFIRMED'].includes(item.status) && <button className="btn btn-small btn-danger" disabled={busy === item.id} onClick={() => beginBookingAction(item, 'CANCELLED')}><XCircle /> {member && item.status === 'CONFIRMED' ? 'Hủy / yêu cầu hủy' : 'Hủy lịch'}</button>}
         </div>
       </div>) : <div className="empty-state"><CalendarCheck /><h3>Không có lịch trong bộ lọc này</h3><p>Lịch mới và thay đổi trạng thái sẽ xuất hiện tại đây.</p></div>}
     </div>

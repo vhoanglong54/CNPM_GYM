@@ -79,3 +79,37 @@ export interface Profile {
   }
   trainerProfile?: { id: string; trainerCode: string; specialties?: string }
 }
+
+export interface StaffReview {
+  id: string
+  rating: number
+  comment: string
+  createdAt: string
+  updatedAt: string
+  member: { fullName: string }
+}
+
+export interface StaffRating {
+  average?: number | null
+  count: number
+}
+
+export interface ReviewableStaff {
+  id: string
+  fullName: string
+  status: 'ACTIVE' | 'INACTIVE' | 'UNVERIFIED'
+  roles: Array<{ role: { code: Role; name: string } }>
+  trainerProfile?: {
+    trainerCode: string
+    bio?: string
+    specialties?: string
+    yearsExperience: number
+  }
+  rating: StaffRating
+  reviewedByCurrentMember: boolean
+}
+
+export interface StaffReviewDetail extends ReviewableStaff {
+  reviews: StaffReview[]
+  myReview?: StaffReview | null
+}
