@@ -204,8 +204,10 @@ Kết quả mong đợi: không yêu cầu booking trước đó; lần lưu th�
 4. Vào **Check-in**, chọn **Mở camera**, cấp quyền camera và đưa QR hội viên vào khung quét.
 5. Sau khi đọc được `MB-000101`, kiểm tra tên hội viên, số ngày còn lại và gói Gym được đề xuất.
 6. Chọn gói cần áp dụng nếu hội viên có nhiều quyền lợi, sau đó chọn **Xác nhận check-in**.
-7. Kiểm tra bản ghi mới trong lịch sử của cả Lễ tân và Hội viên.
-8. Thử xác nhận lại cùng hội viên trong ngày, mã không tồn tại hoặc hội viên không có gói Gym hiệu lực.
+7. Kiểm tra thẻ kết quả **Check-in thành công** và khối **Lịch PT hôm nay**; nếu có lịch phải hiện đúng giờ, tên PT và trạng thái.
+8. Kiểm tra bản ghi mới trong lịch sử của cả Lễ tân và Hội viên.
+9. Xác nhận lại cùng hội viên trong ngày: giao diện phải hiện **Đã check-in hôm nay**, không hiện toast lỗi đỏ và vẫn hiện lịch PT.
+10. Thử thêm mã không tồn tại hoặc hội viên chưa từng check-in và không có gói Gym hiệu lực.
 
 Trên thiết bị tại quầy, mở [https://titan-gym-web.vercel.app/checkin](https://titan-gym-web.vercel.app/checkin) bằng Chrome/Edge độc lập, cho phép quyền camera rồi quét QR đang hiển thị trên điện thoại Hội viên. Nếu camera vẫn không mở hoặc thiết bị không có camera, nhập `MB-000101` vào ô mã hội viên rồi xác nhận. Khi kiểm thử local bằng IP LAN qua HTTP, trình duyệt có thể chặn camera; dùng `http://localhost:5173/checkin` ngay trên máy chủ hoặc nhập mã thủ công. Không cần camera để kiểm tra phần còn lại của quy trình.
 
@@ -216,6 +218,8 @@ Kết quả mong đợi:
 - Mã sai hoặc không có quyền lợi hợp lệ bị từ chối rõ ràng.
 - Mỗi hội viên chỉ được ghi nhận một lần trong cùng ngày, tránh tăng sai số ngày tập hoặc trừ nhiều lượt.
 - Nếu Hội viên quay lại trong ngày, giao diện báo đã check-in; Lễ tân có thể cho khách qua nhưng hệ thống không tạo bản ghi hoặc trừ lượt lần hai.
+- Cả lần đầu và lần quét lại đều hiện lịch PT đang hoạt động trong ngày hoặc thông báo rõ là không có lịch.
+- Check-in Gym không tự chuyển booking PT sang hoàn thành; PT vẫn thao tác xác nhận buổi tập riêng tại **Lịch PT**.
 - Hội viên chỉ hiển thị QR và lịch sử của mình; chỉ Lễ tân/Chủ phòng có quyền ghi nhận check-in.
 
 ## 7. Quản lý gói, hội viên và nhân sự

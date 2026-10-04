@@ -74,9 +74,11 @@ Trừ các endpoint Public, request phải có `Authorization: Bearer <JWT>`. M�
 
 | Method | Path | Quyền và phạm vi |
 |---|---|---|
-| GET | `/operations/checkins/eligibility/:memberCode` | Owner, Receptionist theo kiểm tra trong service. |
-| POST | `/operations/checkins` | Owner, Receptionist; cần `memberCode`, `idempotencyKey`, có thể chọn `memberMembershipId`. |
+| GET | `/operations/checkins/eligibility/:memberCode` | Owner, Receptionist; trả gói Gym có thể áp dụng và `alreadyCheckedIn`. Nếu gói theo lượt vừa hết do lần check-in đầu, gói đã dùng vẫn được trả về để tra cứu lần quét lại. |
+| POST | `/operations/checkins` | Owner, Receptionist; cần `memberCode`, `idempotencyKey`, có thể chọn `memberMembershipId`. Trả `alreadyCheckedIn`, `replayed` và `todayPtAppointments`. Lần quét lại cùng ngày vẫn thành công nhưng không ghi/trừ thêm. |
 | GET | `/operations/checkins` | Member xem của mình; Owner/Receptionist xem tối đa 100 lượt gần nhất. |
+
+`todayPtAppointments` chỉ liệt kê booking trong ngày có trạng thái `PENDING`, `CONFIRMED` hoặc `CANCEL_REQUESTED`, kèm giờ bắt đầu/kết thúc và tên PT. Endpoint check-in không cập nhật booking PT.
 
 Lưu ý phản ánh đúng implementation hiện tại: `GET /operations/checkins` mới chỉ có JWT guard ở controller. Frontend không cấp trang Check-in cho Trainer, nhưng service hiện dùng nhánh danh sách chung cho tài khoản không có `memberProfileId`; vì vậy Trainer gọi API trực tiếp vẫn có thể nhận danh sách chung. Đây là sai lệch RBAC cần sửa ở mã nguồn nếu yêu cầu bảo mật là Trainer không được xem check-in.
 

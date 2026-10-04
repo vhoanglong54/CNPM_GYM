@@ -26,7 +26,7 @@ Ngoài phạm vi: thanh toán thật, hóa đơn điện tử, kế toán thuế
 | FR-07 | Receipt PDF dùng font Unicode và ghi phương thức, tài khoản/vai trò/thời gian xác nhận; đây là chứng từ mô phỏng, không có giá trị thuế. |
 | FR-08 | Trainer mở slot tương lai không trùng; Member lọc theo ngày, sắp xếp theo đánh giá/lịch sớm và chỉ đặt slot còn trống. |
 | FR-09 | Đặt lịch giữ ngay một buổi PT; hủy/từ chối hoàn lượt giữ, COMPLETED/NO_SHOW chuyển lượt giữ thành lượt đã dùng. |
-| FR-10 | Hội viên xuất trình QR cá nhân; Lễ tân/Chủ phòng quét hoặc nhập mã, chọn quyền lợi Gym hợp lệ và xác nhận check-in. API chống gửi lặp bằng idempotency key và không ghi nhận quá một lượt/Hội viên/ngày. Khi khách quay lại trong ngày, Lễ tân có thể cho qua nhưng hệ thống không tạo lượt hoặc trừ quyền lợi lần hai. |
+| FR-10 | Hội viên xuất trình QR cá nhân; Lễ tân/Chủ phòng quét hoặc nhập mã, chọn quyền lợi Gym hợp lệ và xác nhận check-in. API chống gửi lặp bằng idempotency key và chỉ ghi một lượt/Hội viên/ngày. Cả lần đầu và lần quét lại đều trả lịch PT đang hoạt động trong ngày; lần quét lại là kết quả thông tin bình thường, không tạo bản ghi hoặc trừ quyền lợi lần hai. Check-in Gym không đổi trạng thái booking PT. |
 | FR-11 | Owner xem tổng thu chỉ từ payment PAID, hội viên, check-in, booking và gói sắp hết hạn. |
 | FR-12 | UI hiển thị thông báo tiếng Việt tại thao tác và vô hiệu hóa nút khi đang gửi. |
 | FR-13 | Người dùng xem/cập nhật hồ sơ và đổi mật khẩu sau khi xác nhận mật khẩu hiện tại. |
@@ -48,7 +48,7 @@ Ngoài phạm vi: thanh toán thật, hóa đơn điện tử, kế toán thuế
 ## 5. Chính sách MVP đã khóa
 
 - QR chứa mã hội viên để Hội viên xuất trình; chỉ Lễ tân/Chủ phòng được quét hoặc nhập mã và xác nhận check-in.
-- Chống check-in lặp theo `idempotencyKey` và theo hội viên/ngày; mỗi lượt ghi rõ gói Gym được áp dụng.
+- Chống check-in lặp theo `idempotencyKey` và theo hội viên/ngày; mỗi lượt ghi rõ gói Gym được áp dụng. Quét lại trả bản ghi đầu ngày và lịch PT hôm nay thay vì báo lỗi.
 - Gói Gym theo tháng hiển thị ngày bắt đầu/kết thúc; gói PT hiển thị tổng, đã dùng, đang giữ và còn khả dụng.
 - Lịch PT giữ một buổi từ `PENDING`; `CANCEL_REQUESTED` tiếp tục giữ slot/buổi, `REJECTED`/`CANCELLED` hoàn buổi, `COMPLETED`/`NO_SHOW` trừ một buổi.
 - Hội viên hủy lịch đã xác nhận trước ít nhất 4 giờ được hủy ngay; dưới 4 giờ tạo `CANCEL_REQUESTED` để PT/Chủ phòng chấp nhận hoặc từ chối. PT hủy trước giờ bắt đầu có hiệu lực ngay và hoàn buổi.

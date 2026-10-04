@@ -66,6 +66,7 @@ flowchart LR
   UI[Giao diện Check-in]
   BENEFIT[Quyền lợi Gym]
   CHECKIN[Lịch sử check-in]
+  PT[Lịch PT hôm nay]
 
   M -->|1. Xuất trình| QR
   S -->|2. Quét hoặc nhập mã| UI
@@ -73,10 +74,13 @@ flowchart LR
   BENEFIT -->|4. Trả gói hợp lệ| UI
   S -->|5. Chọn gói và xác nhận| UI
   UI -->|6. Ghi nhận lượt vào| CHECKIN
-  CHECKIN -->|7. Trả kết quả| S
+  CHECKIN -->|7. Lấy kết quả trong ngày| UI
+  UI -->|8. Tra cứu| PT
+  PT -->|9. Trả giờ hẹn và PT| UI
+  UI -->|10. Trả kết quả và giờ hẹn| S
 ```
 
-Nếu Hội viên đã check-in trong ngày, lịch sử không tạo thêm bản ghi và không trừ thêm lượt; Lễ tân vẫn có thể cho Hội viên vào.
+Nếu Hội viên đã check-in trong ngày, hệ thống trả kết quả bình thường nhưng không tạo thêm bản ghi hoặc trừ thêm lượt. Cả hai trường hợp đều hiển thị lịch PT trong ngày; check-in không tự đánh dấu buổi PT hoàn thành.
 
 ## 4. Đánh giá nhân viên
 

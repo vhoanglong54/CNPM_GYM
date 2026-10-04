@@ -141,14 +141,16 @@ sequenceDiagram
 
   alt Chưa check-in hôm nay
     SYS->>SYS: Lưu lượt check-in
-    SYS-->>UI: Check-in thành công
+    SYS->>SYS: Tìm lịch PT hôm nay
+    SYS-->>UI: Check-in thành công + lịch PT
   else Đã check-in hôm nay
-    SYS-->>UI: Thông báo đã check-in, không ghi thêm lượt
+    SYS->>SYS: Không ghi/trừ thêm, tìm lịch PT hôm nay
+    SYS-->>UI: Kết quả đã check-in + lịch PT
     Note over S,UI: Lễ tân vẫn có thể cho Hội viên vào
   end
 ```
 
-Hội viên chỉ hiển thị QR; quyền ghi nhận check-in thuộc Lễ tân hoặc Chủ phòng.
+Hội viên chỉ hiển thị QR; quyền ghi nhận check-in thuộc Lễ tân hoặc Chủ phòng. Check-in Gym không thay đổi booking PT; PT xác nhận hoàn thành buổi tập theo luồng Lịch PT.
 
 ## 5. Đánh giá nhân viên
 

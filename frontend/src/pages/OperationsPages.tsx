@@ -76,6 +76,25 @@ interface CheckinEligibility {
     remainingDays?: number
   }>
   recommendedMembershipId: string
+  alreadyCheckedIn: boolean
+}
+
+interface TodayPtAppointment {
+  id: string
+  status: BookingStatus
+  startsAt: string
+  endsAt: string
+  trainer: { id: string; fullName: string }
+}
+
+interface CheckinResult {
+  id: string
+  checkedInAt: string
+  member: { memberCode: string; fullName: string }
+  plan: string
+  alreadyCheckedIn: boolean
+  replayed: boolean
+  todayPtAppointments: TodayPtAppointment[]
 }
 
 const statusLabels: Record<BookingStatus, string> = {
@@ -424,6 +443,7 @@ export function CheckinPage() {
   const [busy, setBusy] = useState(false)
   const [cameraOpen, setCameraOpen] = useState(false)
   const [eligibility, setEligibility] = useState<CheckinEligibility | null>(null)
+  const [checkinResult, setCheckinResult] = useState<CheckinResult | null>(null)
   const [selectedMembershipId, setSelectedMembershipId] = useState('')
   const busyRef = useRef(false)
   const checkinKeyRef = useRef('')
@@ -467,6 +487,7 @@ export function CheckinPage() {
     busyRef.current = true
     setBusy(true)
     setEligibility(null)
+    setCheckinResult(null)
     const token = eligibilityRequestGate.begin()
     try {
       const { data } = await api.get<ApiResponse<CheckinEligibility>>(`/operations/checkins/eligibility/${encodeURIComponent(memberCode.trim().toUpperCase())}`)
@@ -493,9 +514,11 @@ export function CheckinPage() {
     setBusy(true)
     loadRequestGate.invalidate()
     try {
-      const { data } = await api.post<ApiResponse<unknown>>('/operations/checkins', { memberCode: code.trim().toUpperCase(), memberMembershipId: selectedMembershipId, idempotencyKey: checkinKeyRef.current || crypto.randomUUID() })
+      const { data } = await api.post<ApiResponse<CheckinResult>>('/operations/checkins', { memberCode: code.trim().toUpperCase(), memberMembershipId: selectedMembershipId, idempotencyKey: checkinKeyRef.current || crypto.randomUUID() })
       loadRequestGate.invalidate()
-      toast.success(data.message)
+      setCheckinResult(data.data)
+      if (data.data.alreadyCheckedIn) toast(data.message, { icon: 'ℹ️' })
+      else toast.success(data.message)
       setCode('')
       setEligibility(null)
       setSelectedMembershipId('')
@@ -530,8 +553,13 @@ export function CheckinPage() {
         <div className="scanner-heading"><div><span className="eyebrow dark">QUÉT MÃ HỘI VIÊN</span><h3>Camera quét QR</h3></div><button type="button" className={`btn ${cameraOpen ? 'btn-ghost' : 'btn-dark'}`} onClick={() => setCameraOpen(!cameraOpen)}>{cameraOpen ? <><CameraOff /> Đóng camera</> : <><Camera /> Mở camera</>}</button></div>
         {cameraOpen && <CameraScanner onDetected={acceptScan} onClose={() => setCameraOpen(false)} />}
         {!cameraOpen && <div className="camera-placeholder"><ScanLine /><strong>Quét QR trên điện thoại hội viên</strong><small>Nếu thiết bị không hỗ trợ camera, hãy nhập mã ở bên dưới.</small></div>}
-        <form onSubmit={lookup} className="checkin-form"><label>Mã hội viên<input value={code} onChange={(event) => { eligibilityRequestGate.invalidate(); checkinKeyRef.current = ''; setCode(event.target.value.toUpperCase()); setEligibility(null); setSelectedMembershipId('') }} placeholder="Ví dụ: MB-000101" required /><small>Nhập đúng mã đang hiển thị trên tài khoản Hội viên.</small></label><button className="btn btn-dark btn-wide" disabled={busy || !code.trim()}><ScanLine /> {busy ? 'Đang kiểm tra...' : 'Kiểm tra quyền lợi'}</button></form>
-        {eligibility && <div className="eligibility-panel"><div className="eligibility-member"><div><strong>{eligibility.member.fullName}</strong><small>{eligibility.member.memberCode} · {eligibility.member.email}</small></div><span>Đủ điều kiện</span></div><p>Chọn đúng gói sẽ được ghi nhận cho lượt check-in này:</p><div className="membership-choices">{eligibility.memberships.map((membership) => <label className={selectedMembershipId === membership.id ? 'selected' : ''} key={membership.id}><input type="radio" name="checkin-membership" value={membership.id} checked={selectedMembershipId === membership.id} onChange={() => setSelectedMembershipId(membership.id)} /><span><strong>{membership.planName}</strong><small>{membership.type === 'DURATION' ? `Còn ${membership.remainingDays ?? 0} ngày · hết hạn ${membership.endDate ? formatAppDate(membership.endDate) : '—'}` : `Còn ${(membership.visitsTotal ?? 0) - membership.visitsUsed}/${membership.visitsTotal ?? 0} lượt`}</small></span>{membership.id === eligibility.recommendedMembershipId && <em>Đề xuất</em>}</label>)}</div><button type="button" className="btn btn-primary btn-wide" disabled={busy || !selectedMembershipId} onClick={() => void checkin()}><CheckCircle2 /> {busy ? 'Đang ghi nhận...' : `Xác nhận với ${eligibility.memberships.find((item) => item.id === selectedMembershipId)?.planName ?? 'gói đã chọn'}`}</button></div>}
+        <form onSubmit={lookup} className="checkin-form"><label>Mã hội viên<input value={code} onChange={(event) => { eligibilityRequestGate.invalidate(); checkinKeyRef.current = ''; setCode(event.target.value.toUpperCase()); setEligibility(null); setCheckinResult(null); setSelectedMembershipId('') }} placeholder="Ví dụ: MB-000101" required /><small>Nhập đúng mã đang hiển thị trên tài khoản Hội viên.</small></label><button className="btn btn-dark btn-wide" disabled={busy || !code.trim()}><ScanLine /> {busy ? 'Đang kiểm tra...' : 'Kiểm tra quyền lợi'}</button></form>
+        {eligibility && <div className="eligibility-panel"><div className={`eligibility-member ${eligibility.alreadyCheckedIn ? 'checked' : ''}`}><div><strong>{eligibility.member.fullName}</strong><small>{eligibility.member.memberCode} · {eligibility.member.email}</small></div><span>{eligibility.alreadyCheckedIn ? 'Đã check-in hôm nay' : 'Đủ điều kiện'}</span></div><p>{eligibility.alreadyCheckedIn ? 'Hệ thống sẽ không ghi thêm lượt hoặc trừ quyền lợi. Tiếp tục để xem lịch PT hôm nay.' : 'Chọn đúng gói sẽ được ghi nhận cho lượt check-in này:'}</p><div className="membership-choices">{eligibility.memberships.filter((membership) => !eligibility.alreadyCheckedIn || membership.id === eligibility.recommendedMembershipId).map((membership) => <label className={selectedMembershipId === membership.id ? 'selected' : ''} key={membership.id}><input type="radio" name="checkin-membership" value={membership.id} checked={selectedMembershipId === membership.id} disabled={eligibility.alreadyCheckedIn} onChange={() => setSelectedMembershipId(membership.id)} /><span><strong>{membership.planName}</strong><small>{membership.type === 'DURATION' ? `Còn ${membership.remainingDays ?? 0} ngày · hết hạn ${membership.endDate ? formatAppDate(membership.endDate) : '—'}` : `Còn ${Math.max(0, (membership.visitsTotal ?? 0) - membership.visitsUsed)}/${membership.visitsTotal ?? 0} lượt`}</small></span>{membership.id === eligibility.recommendedMembershipId && <em>{eligibility.alreadyCheckedIn ? 'Gói đã dùng' : 'Đề xuất'}</em>}</label>)}</div><button type="button" className="btn btn-primary btn-wide" disabled={busy || !selectedMembershipId} onClick={() => void checkin()}><CheckCircle2 /> {busy ? 'Đang kiểm tra...' : eligibility.alreadyCheckedIn ? 'Xem kết quả và lịch PT hôm nay' : `Xác nhận với ${eligibility.memberships.find((item) => item.id === selectedMembershipId)?.planName ?? 'gói đã chọn'}`}</button></div>}
+        {checkinResult && <div className={`checkin-result ${checkinResult.alreadyCheckedIn ? 'repeat' : 'success'}`}>
+          <div className="checkin-result-heading"><span>{checkinResult.alreadyCheckedIn ? <Clock3 /> : <CheckCircle2 />}</span><div><strong>{checkinResult.alreadyCheckedIn ? 'Đã check-in hôm nay' : 'Check-in thành công'}</strong><small>{checkinResult.alreadyCheckedIn ? `${checkinResult.member.fullName} · ${checkinResult.member.memberCode} · lần đầu lúc ${formatAppTime(checkinResult.checkedInAt)} · không ghi thêm lượt` : `${checkinResult.member.fullName} · ${checkinResult.member.memberCode} · ${checkinResult.plan} · ${formatAppTime(checkinResult.checkedInAt)}`}</small></div></div>
+          <div className="today-pt-schedule"><h4><CalendarClock /> Lịch PT hôm nay</h4>{checkinResult.todayPtAppointments.length ? <div>{checkinResult.todayPtAppointments.map((appointment) => <article key={appointment.id}><span><strong>{formatAppTime(appointment.startsAt)} – {formatAppTime(appointment.endsAt)}</strong><small>PT {appointment.trainer.fullName}</small></span><em className={`status ${appointment.status.toLowerCase()}`}>{statusLabels[appointment.status]}</em></article>)}</div> : <p>Hôm nay hội viên không có lịch PT.</p>}</div>
+          <small className="pt-status-note">Check-in Gym không thay đổi trạng thái lịch PT; PT xác nhận hoàn thành buổi tập riêng.</small>
+        </div>}
       </div>}
       <div className="card"><div className="card-heading"><div><span className="eyebrow dark">HOẠT ĐỘNG GẦN ĐÂY</span><h3>{isMember ? 'Lịch sử vào tập của tôi' : 'Lịch sử check-in'}</h3></div></div><div className="timeline">{history.length ? history.slice(0, 10).map((item) => <div className="timeline-item" key={item.id}><i /><div><strong>{item.member.user.fullName}</strong><small>{item.memberMembership.plan.name}</small></div><time>{formatAppDateTime(item.checkedInAt)}</time></div>) : <div className="empty-state"><Clock3 /><p>Chưa có lượt check-in.</p></div>}</div></div>
     </div>
