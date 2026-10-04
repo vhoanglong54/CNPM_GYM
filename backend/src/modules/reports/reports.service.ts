@@ -46,7 +46,13 @@ export class ReportsService {
       this.prisma.checkin.count(),
       this.prisma.ptBooking.count({
         where: {
-          status: { in: [BookingStatus.PENDING, BookingStatus.CONFIRMED] },
+          status: {
+            in: [
+              BookingStatus.PENDING,
+              BookingStatus.CONFIRMED,
+              BookingStatus.AWAITING_COMPLETION,
+            ],
+          },
         },
       }),
       this.prisma.memberMembership.count({

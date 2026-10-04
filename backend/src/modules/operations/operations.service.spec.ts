@@ -82,13 +82,14 @@ describe('OperationsService PT completion attendance', () => {
     trainerProfileId: 'trainer-1',
   };
 
-  function confirmedBooking() {
+  function awaitingCompletionBooking(attendanceCheckedInAt: Date | null) {
     return {
       id: 'booking-1',
       slotId: 'slot-1',
       memberId: 'member-1',
       memberPtPackageId: 'member-package-1',
-      status: BookingStatus.CONFIRMED,
+      status: BookingStatus.AWAITING_COMPLETION,
+      attendanceCheckedInAt,
       slot: {
         trainerId: 'trainer-1',
         startsAt: new Date(Date.now() - 60 * 60 * 1000),
@@ -97,11 +98,13 @@ describe('OperationsService PT completion attendance', () => {
     };
   }
 
-  it('chặn hoàn thành khi Hội viên chưa check-in trước giờ PT', async () => {
-    const booking = confirmedBooking();
+  it('chặn hoàn thành khi buổi tập không có điểm danh PT hợp lệ', async () => {
+    const booking = awaitingCompletionBooking(null);
     const prisma = {
-      ptBooking: { findUnique: vi.fn().mockResolvedValue(booking) },
-      checkin: { findFirst: vi.fn().mockResolvedValue(null) },
+      ptBooking: {
+        findMany: vi.fn().mockResolvedValue([]),
+        findUnique: vi.fn().mockResolvedValue(booking),
+      },
       $transaction: vi.fn(),
     };
     const service = new OperationsService(prisma as never, {} as never);
@@ -113,21 +116,11 @@ describe('OperationsService PT completion attendance', () => {
         trainerUser,
       ),
     ).rejects.toMatchObject({ errorCode: 'PT_COMPLETION_CHECKIN_REQUIRED' });
-    expect(prisma.checkin.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          memberId: booking.memberId,
-          checkedInAt: expect.objectContaining({
-            lte: booking.slot.startsAt,
-          }),
-        }),
-      }),
-    );
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
-  it('cho PT hoàn thành khi Hội viên đã check-in trước giờ tập', async () => {
-    const booking = confirmedBooking();
+  it('cho PT hoàn thành buổi đang chờ khi đã có điểm danh PT hợp lệ', async () => {
+    const booking = awaitingCompletionBooking(new Date());
     const updatePackage = vi.fn().mockResolvedValue({});
     const updateBooking = vi.fn().mockResolvedValue({
       id: booking.id,
@@ -156,9 +149,9 @@ describe('OperationsService PT completion attendance', () => {
       },
     };
     const prisma = {
-      ptBooking: { findUnique: vi.fn().mockResolvedValue(booking) },
-      checkin: {
-        findFirst: vi.fn().mockResolvedValue({ id: 'checkin-1' }),
+      ptBooking: {
+        findMany: vi.fn().mockResolvedValue([]),
+        findUnique: vi.fn().mockResolvedValue(booking),
       },
       $transaction: vi.fn((callback) => callback(transactionClient)),
     };
@@ -187,6 +180,157 @@ describe('OperationsService PT completion attendance', () => {
       transactionClient,
       ['member-user-1'],
       expect.objectContaining({ type: 'BOOKING_COMPLETED' }),
+    );
+  });
+});
+
+describe('OperationsService ended PT reconciliation', () => {
+  const ownerUser = {
+    id: 'owner-user-1',
+    email: 'owner@gym.local',
+    fullName: 'Owner Test',
+    roles: [RoleCode.OWNER],
+  };
+
+  function endedBooking(attendanceCheckedInAt: Date | null) {
+    return {
+      id: 'booking-ended',
+      slotId: 'slot-ended',
+      memberId: 'member-1',
+      memberPtPackageId: 'member-package-1',
+      status: BookingStatus.CONFIRMED,
+      attendanceCheckedInAt,
+      slot: {
+        trainerId: 'trainer-1',
+        startsAt: new Date(Date.now() - 90 * 60 * 1000),
+        endsAt: new Date(Date.now() - 30 * 60 * 1000),
+        trainer: { userId: 'trainer-user-1' },
+      },
+      member: { userId: 'member-user-1' },
+    };
+  }
+
+  it('tự ghi nhận vắng mặt và trừ buổi khi hết thời gian đệm mà không check-in', async () => {
+    const booking = endedBooking(null);
+    const updatePackage = vi.fn().mockResolvedValue({});
+    const updateBooking = vi.fn().mockResolvedValue({
+      ...booking,
+      status: BookingStatus.NO_SHOW,
+    });
+    const transactionClient = {
+      ptBooking: {
+        findUniqueOrThrow: vi.fn().mockResolvedValue(booking),
+        update: updateBooking,
+      },
+      memberPtPackage: {
+        findUniqueOrThrow: vi.fn().mockResolvedValue({
+          id: booking.memberPtPackageId,
+          sessionsReserved: 1,
+          sessionsUsed: 0,
+          sessionsTotal: 8,
+        }),
+        update: updatePackage,
+      },
+      auditLog: { create: vi.fn().mockResolvedValue({}) },
+    };
+    const findMany = vi
+      .fn()
+      .mockResolvedValueOnce([{ id: booking.id }])
+      .mockResolvedValueOnce([
+        {
+          ...booking,
+          status: BookingStatus.NO_SHOW,
+          resolutionReason: 'Tự động',
+        },
+      ]);
+    const notifyUsers = vi.fn().mockResolvedValue({ count: 2 });
+    const service = new OperationsService(
+      {
+        ptBooking: { findMany },
+        $transaction: vi.fn((callback) => callback(transactionClient)),
+      } as never,
+      { notifyUsers } as never,
+    );
+
+    const result = await service.listBookings(ownerUser);
+
+    expect(result[0]).toMatchObject({ status: BookingStatus.NO_SHOW });
+    expect(updatePackage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: {
+          sessionsUsed: { increment: 1 },
+          sessionsReserved: { decrement: 1 },
+        },
+      }),
+    );
+    expect(updateBooking).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: BookingStatus.NO_SHOW }),
+      }),
+    );
+    expect(notifyUsers).toHaveBeenCalledWith(
+      transactionClient,
+      ['member-user-1', 'trainer-user-1'],
+      expect.objectContaining({ type: 'BOOKING_NO_SHOW' }),
+    );
+  });
+
+  it('đưa buổi có check-in hợp lệ sang chờ PT xác nhận hoàn thành', async () => {
+    const checkedInAt = new Date(Date.now() - 45 * 60 * 1000);
+    const booking = endedBooking(checkedInAt);
+    const updateBooking = vi.fn().mockResolvedValue({
+      ...booking,
+      status: BookingStatus.AWAITING_COMPLETION,
+    });
+    const transactionClient = {
+      ptBooking: {
+        findUniqueOrThrow: vi.fn().mockResolvedValue(booking),
+        update: updateBooking,
+      },
+      auditLog: { create: vi.fn().mockResolvedValue({}) },
+    };
+    const waitingBooking = {
+      ...booking,
+      status: BookingStatus.AWAITING_COMPLETION,
+      member: { user: { fullName: 'Member Test', email: 'member@gym.local' } },
+      slot: {
+        ...booking.slot,
+        trainer: { user: { id: 'trainer-user-1', fullName: 'Trainer Test' } },
+      },
+      memberPtPackage: { package: { name: 'PT 8 Buổi' } },
+      resolvedBy: null,
+      cancellationRequestedBy: null,
+    };
+    const findMany = vi
+      .fn()
+      .mockResolvedValueOnce([{ id: booking.id }])
+      .mockResolvedValueOnce([waitingBooking]);
+    const notifyUsers = vi.fn().mockResolvedValue({ count: 1 });
+    const service = new OperationsService(
+      {
+        ptBooking: { findMany },
+        $transaction: vi.fn((callback) => callback(transactionClient)),
+      } as never,
+      { notifyUsers } as never,
+    );
+
+    const result = await service.listBookings(ownerUser);
+
+    expect(result[0]).toMatchObject({
+      status: BookingStatus.AWAITING_COMPLETION,
+      completionCheckinAt: checkedInAt,
+    });
+    expect(updateBooking).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: BookingStatus.AWAITING_COMPLETION,
+        }),
+      }),
+    );
+    expect(notifyUsers).toHaveBeenCalledWith(
+      transactionClient,
+      ['trainer-user-1'],
+      expect.objectContaining({ type: 'BOOKING_COMPLETION_REQUIRED' }),
     );
   });
 });
@@ -259,6 +403,11 @@ describe('OperationsService check-in', () => {
         findMany: vi.fn().mockResolvedValue([membership]),
         update: vi.fn(),
       },
+      ptBooking: {
+        findMany: vi.fn().mockResolvedValue([{ id: appointment.id }]),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+      auditLog: { create: vi.fn().mockResolvedValue({}) },
     };
     const { service } = createService(transactionClient);
 
@@ -286,6 +435,7 @@ describe('OperationsService check-in', () => {
     });
     expect(transactionClient.checkin.create).toHaveBeenCalledOnce();
     expect(transactionClient.memberMembership.update).not.toHaveBeenCalled();
+    expect(transactionClient.ptBooking.updateMany).toHaveBeenCalledOnce();
   });
 
   it('trả lượt đầu tiên khi quét lại trong ngày mà không ghi hoặc trừ thêm', async () => {
@@ -305,6 +455,11 @@ describe('OperationsService check-in', () => {
         create: vi.fn(),
       },
       memberMembership: { findMany: vi.fn(), update: vi.fn() },
+      ptBooking: {
+        findMany: vi.fn().mockResolvedValue([{ id: appointment.id }]),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+      auditLog: { create: vi.fn().mockResolvedValue({}) },
     };
     const { service } = createService(transactionClient);
 
@@ -326,6 +481,7 @@ describe('OperationsService check-in', () => {
     expect(transactionClient.checkin.create).not.toHaveBeenCalled();
     expect(transactionClient.memberMembership.findMany).not.toHaveBeenCalled();
     expect(transactionClient.memberMembership.update).not.toHaveBeenCalled();
+    expect(transactionClient.ptBooking.updateMany).toHaveBeenCalledOnce();
   });
 
   it('phát lại an toàn cùng một yêu cầu check-in', async () => {
@@ -345,6 +501,11 @@ describe('OperationsService check-in', () => {
         create: vi.fn(),
       },
       memberMembership: { findMany: vi.fn(), update: vi.fn() },
+      ptBooking: {
+        findMany: vi.fn().mockResolvedValue([{ id: appointment.id }]),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+      auditLog: { create: vi.fn().mockResolvedValue({}) },
     };
     const { service } = createService(transactionClient);
 
@@ -364,6 +525,7 @@ describe('OperationsService check-in', () => {
     });
     expect(transactionClient.checkin.findFirst).not.toHaveBeenCalled();
     expect(transactionClient.checkin.create).not.toHaveBeenCalled();
+    expect(transactionClient.ptBooking.updateMany).toHaveBeenCalledOnce();
   });
 
   it('vẫn cho kiểm tra lượt check-in cũ khi gói theo lượt vừa hết', async () => {

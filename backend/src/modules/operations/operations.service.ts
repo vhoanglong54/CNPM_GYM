@@ -20,6 +20,8 @@ import { SlotSort } from './operations.dto.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 
 const MEMBER_CANCELLATION_CUTOFF_MS = 4 * 60 * 60 * 1000;
+const PT_CHECKIN_EARLY_MS = 60 * 60 * 1000;
+const PT_CHECKIN_GRACE_MS = 5 * 60 * 1000;
 const CHECKIN_TRANSACTION_MAX_ATTEMPTS = 3;
 const CHECKIN_TRANSACTION_OPTIONS = {
   isolationLevel: 'Serializable' as const,
@@ -93,6 +95,7 @@ export class OperationsService {
                 BookingStatus.PENDING,
                 BookingStatus.CONFIRMED,
                 BookingStatus.CANCEL_REQUESTED,
+                BookingStatus.AWAITING_COMPLETION,
               ],
             },
           },
@@ -163,6 +166,7 @@ export class OperationsService {
                 BookingStatus.PENDING,
                 BookingStatus.CONFIRMED,
                 BookingStatus.CANCEL_REQUESTED,
+                BookingStatus.AWAITING_COMPLETION,
               ],
             },
           },
@@ -232,6 +236,7 @@ export class OperationsService {
                 BookingStatus.PENDING,
                 BookingStatus.CONFIRMED,
                 BookingStatus.CANCEL_REQUESTED,
+                BookingStatus.AWAITING_COMPLETION,
               ],
             },
           },
@@ -250,6 +255,7 @@ export class OperationsService {
                 BookingStatus.PENDING,
                 BookingStatus.CONFIRMED,
                 BookingStatus.CANCEL_REQUESTED,
+                BookingStatus.AWAITING_COMPLETION,
               ],
             },
             slot: {
@@ -305,7 +311,143 @@ export class OperationsService {
     );
   }
 
+  private ptCheckinWindow(slot: { startsAt: Date; endsAt: Date }) {
+    return {
+      opensAt: new Date(slot.startsAt.getTime() - PT_CHECKIN_EARLY_MS),
+      closesAt: new Date(slot.endsAt.getTime() + PT_CHECKIN_GRACE_MS),
+    };
+  }
+
+  private async reconcileEndedBookings() {
+    const latestEndedAt = new Date(Date.now() - PT_CHECKIN_GRACE_MS);
+    const candidates = await this.prisma.ptBooking.findMany({
+      where: {
+        status: BookingStatus.CONFIRMED,
+        slot: { endsAt: { lte: latestEndedAt } },
+      },
+      select: { id: true },
+    });
+
+    for (const candidate of candidates) {
+      try {
+        await this.prisma.$transaction(
+          async (tx) => {
+            const booking = await tx.ptBooking.findUniqueOrThrow({
+              where: { id: candidate.id },
+              include: {
+                slot: {
+                  include: {
+                    trainer: { select: { userId: true } },
+                  },
+                },
+                member: { select: { userId: true } },
+              },
+            });
+            if (booking.status !== BookingStatus.CONFIRMED) return;
+            const { opensAt, closesAt } = this.ptCheckinWindow(booking.slot);
+
+            if (booking.attendanceCheckedInAt) {
+              await tx.ptBooking.update({
+                where: { id: booking.id },
+                data: {
+                  status: BookingStatus.AWAITING_COMPLETION,
+                  resolutionReason: null,
+                  resolvedById: null,
+                  resolvedAt: null,
+                },
+              });
+              await tx.auditLog.create({
+                data: {
+                  action: 'QUEUE_PT_COMPLETION',
+                  entityType: 'PtBooking',
+                  entityId: booking.id,
+                  metadata: {
+                    checkedInAt: booking.attendanceCheckedInAt,
+                    windowOpenedAt: opensAt,
+                    windowClosedAt: closesAt,
+                  },
+                },
+              });
+              await this.notifications.notifyUsers(
+                tx,
+                [booking.slot.trainer.userId],
+                {
+                  type: 'BOOKING_COMPLETION_REQUIRED',
+                  title: 'Buổi PT chờ xác nhận hoàn thành',
+                  message: `Buổi PT lúc ${formatAppDateTime(booking.slot.startsAt)} đã kết thúc và có check-in hợp lệ.`,
+                  metadata: { bookingId: booking.id },
+                },
+              );
+              return;
+            }
+
+            const pkg = await tx.memberPtPackage.findUniqueOrThrow({
+              where: { id: booking.memberPtPackageId },
+            });
+            if (
+              pkg.sessionsReserved < 1 ||
+              pkg.sessionsUsed >= pkg.sessionsTotal
+            )
+              throw new ApiError(
+                'PT_RESERVATION_INCONSISTENT',
+                'Dữ liệu lượt PT đang giữ không hợp lệ.',
+                HttpStatus.CONFLICT,
+              );
+            await tx.memberPtPackage.update({
+              where: { id: pkg.id },
+              data: {
+                sessionsUsed: { increment: 1 },
+                sessionsReserved: { decrement: 1 },
+              },
+            });
+            const reason =
+              'Tự động ghi nhận vắng mặt vì không có check-in hợp lệ trước khi hết thời gian đệm.';
+            await tx.ptBooking.update({
+              where: { id: booking.id },
+              data: {
+                status: BookingStatus.NO_SHOW,
+                holdKey: null,
+                resolutionReason: reason,
+                resolvedAt: new Date(),
+              },
+            });
+            await tx.auditLog.create({
+              data: {
+                action: 'AUTO_MARK_PT_NO_SHOW',
+                entityType: 'PtBooking',
+                entityId: booking.id,
+                metadata: {
+                  memberPtPackageId: pkg.id,
+                  windowOpenedAt: opensAt,
+                  windowClosedAt: closesAt,
+                },
+              },
+            });
+            await this.notifications.notifyUsers(
+              tx,
+              [booking.member.userId, booking.slot.trainer.userId],
+              {
+                type: 'BOOKING_NO_SHOW',
+                title: 'Buổi PT được ghi nhận vắng mặt',
+                message:
+                  'Không có check-in hợp lệ trước khi hết thời gian đệm; hệ thống đã trừ một buổi PT.',
+                metadata: { bookingId: booking.id, automatic: true },
+              },
+            );
+          },
+          { isolationLevel: 'Serializable' },
+        );
+      } catch (error) {
+        console.error('Unable to reconcile ended PT booking.', {
+          bookingId: candidate.id,
+          error,
+        });
+      }
+    }
+  }
+
   async listBookings(user: AuthUser) {
+    await this.reconcileEndedBookings();
     const where = user.roles.includes(RoleCode.OWNER)
       ? {}
       : user.trainerProfileId
@@ -332,58 +474,22 @@ export class OperationsService {
       },
       orderBy: { createdAt: 'desc' },
     });
-    const completionCandidates = bookings.filter(
-      (booking) => booking.status === BookingStatus.CONFIRMED,
-    );
-    if (!completionCandidates.length)
-      return bookings.map((booking) => ({
-        ...booking,
-        completionCheckinAt: null,
-      }));
-
-    const earliestDayStart = new Date(
-      Math.min(
-        ...completionCandidates.map((booking) =>
-          appDayBounds(booking.slot.startsAt).start.getTime(),
-        ),
-      ),
-    );
-    const latestSlotStart = new Date(
-      Math.max(
-        ...completionCandidates.map((booking) =>
-          booking.slot.startsAt.getTime(),
-        ),
-      ),
-    );
-    const checkins = await this.prisma.checkin.findMany({
-      where: {
-        memberId: {
-          in: [...new Set(completionCandidates.map((item) => item.memberId))],
-        },
-        checkedInAt: { gte: earliestDayStart, lte: latestSlotStart },
-      },
-      select: { memberId: true, checkedInAt: true },
-      orderBy: { checkedInAt: 'asc' },
-    });
     return bookings.map((booking) => {
-      if (booking.status !== BookingStatus.CONFIRMED)
+      if (
+        booking.status !== BookingStatus.CONFIRMED &&
+        booking.status !== BookingStatus.AWAITING_COMPLETION
+      )
         return { ...booking, completionCheckinAt: null };
-      const { start: bookingDayStart } = appDayBounds(booking.slot.startsAt);
-      const completionCheckin = checkins.find(
-        (checkin) =>
-          checkin.memberId === booking.memberId &&
-          checkin.checkedInAt >= bookingDayStart &&
-          checkin.checkedInAt <= booking.slot.startsAt,
-      );
       return {
         ...booking,
-        completionCheckinAt: completionCheckin?.checkedInAt ?? null,
+        completionCheckinAt: booking.attendanceCheckedInAt,
       };
     });
   }
 
   async updateBooking(id: string, dto: UpdateBookingStatusDto, user: AuthUser) {
     const next = dto.status;
+    if (next === BookingStatus.COMPLETED) await this.reconcileEndedBookings();
     const booking = await this.prisma.ptBooking.findUnique({
       where: { id },
       include: { slot: true },
@@ -553,44 +659,20 @@ export class OperationsService {
       );
     }
     if (
-      (next === BookingStatus.COMPLETED || next === BookingStatus.NO_SHOW) &&
-      booking.status === BookingStatus.CONFIRMED
+      next === BookingStatus.COMPLETED &&
+      booking.status === BookingStatus.AWAITING_COMPLETION
     ) {
-      const now = new Date();
-      if (next === BookingStatus.COMPLETED && booking.slot.startsAt > now)
+      if (!booking.attendanceCheckedInAt)
         throw new ApiError(
-          'BOOKING_NOT_STARTED',
-          'Chưa thể hoàn thành buổi tập trước giờ bắt đầu.',
-        );
-      if (next === BookingStatus.COMPLETED) {
-        const { start: bookingDayStart } = appDayBounds(booking.slot.startsAt);
-        const completionCheckin = await this.prisma.checkin.findFirst({
-          where: {
-            memberId: booking.memberId,
-            checkedInAt: {
-              gte: bookingDayStart,
-              lte: booking.slot.startsAt,
-            },
-          },
-          select: { id: true },
-        });
-        if (!completionCheckin)
-          throw new ApiError(
-            'PT_COMPLETION_CHECKIN_REQUIRED',
-            'Hội viên phải check-in Gym trước giờ bắt đầu buổi PT mới có thể xác nhận hoàn thành.',
-          );
-      }
-      if (next === BookingStatus.NO_SHOW && booking.slot.endsAt > now)
-        throw new ApiError(
-          'BOOKING_NOT_ENDED',
-          'Chỉ có thể đánh dấu vắng mặt sau khi khung giờ kết thúc.',
+          'PT_COMPLETION_CHECKIN_REQUIRED',
+          'Buổi tập không có check-in hợp lệ trong khoảng 60 phút trước giờ bắt đầu đến hết 5 phút đệm.',
         );
       return this.prisma.$transaction(
         async (tx) => {
           const current = await tx.ptBooking.findUniqueOrThrow({
             where: { id },
           });
-          if (current.status !== BookingStatus.CONFIRMED)
+          if (current.status !== BookingStatus.AWAITING_COMPLETION)
             throw new ApiError(
               'BOOKING_STATE_INVALID',
               'Buổi tập này không thể cập nhật trạng thái.',
@@ -614,12 +696,9 @@ export class OperationsService {
             where: { id },
             data: {
               status: next,
-              completedAt: next === BookingStatus.COMPLETED ? new Date() : null,
+              completedAt: new Date(),
               holdKey: null,
-              resolutionReason:
-                next === BookingStatus.NO_SHOW
-                  ? dto.reason?.trim() || 'Hội viên vắng mặt.'
-                  : dto.reason?.trim() || null,
+              resolutionReason: dto.reason?.trim() || null,
               resolvedById: user.id,
               resolvedAt: new Date(),
             },
@@ -627,10 +706,7 @@ export class OperationsService {
           await tx.auditLog.create({
             data: {
               actorId: user.id,
-              action:
-                next === BookingStatus.COMPLETED
-                  ? 'COMPLETE_PT_BOOKING'
-                  : 'MARK_PT_NO_SHOW',
+              action: 'COMPLETE_PT_BOOKING',
               entityType: 'PtBooking',
               entityId: id,
               metadata: { memberPtPackageId: pkg.id },
@@ -641,18 +717,10 @@ export class OperationsService {
             select: { userId: true },
           });
           await this.notifications.notifyUsers(tx, [member.userId], {
-            type:
-              next === BookingStatus.COMPLETED
-                ? 'BOOKING_COMPLETED'
-                : 'BOOKING_NO_SHOW',
-            title:
-              next === BookingStatus.COMPLETED
-                ? 'Buổi PT đã hoàn thành'
-                : 'Buổi PT được ghi nhận vắng mặt',
+            type: 'BOOKING_COMPLETED',
+            title: 'Buổi PT đã hoàn thành',
             message:
-              next === BookingStatus.COMPLETED
-                ? 'Buổi tập đã được ghi nhận. Bạn có thể đánh giá nhân viên tại trang Đánh giá nhân viên.'
-                : 'Buổi đã xác nhận được tính là vắng mặt và đã trừ một buổi PT.',
+              'Buổi tập đã được ghi nhận. Bạn có thể đánh giá nhân viên tại trang Đánh giá nhân viên.',
             metadata: { bookingId: id },
           });
           return updated;
@@ -804,6 +872,50 @@ export class OperationsService {
     );
   }
 
+  private async recordPtAttendanceCheckin(
+    memberId: string,
+    recordedById: string,
+  ) {
+    const checkedInAt = new Date();
+    const latestStart = new Date(checkedInAt.getTime() + PT_CHECKIN_EARLY_MS);
+    const earliestEnd = new Date(checkedInAt.getTime() - PT_CHECKIN_GRACE_MS);
+    return this.prisma.$transaction(async (tx) => {
+      const bookings = await tx.ptBooking.findMany({
+        where: {
+          memberId,
+          status: BookingStatus.CONFIRMED,
+          attendanceCheckedInAt: null,
+          slot: {
+            startsAt: { lte: latestStart },
+            endsAt: { gte: earliestEnd },
+          },
+        },
+        select: { id: true },
+      });
+      for (const booking of bookings) {
+        const updated = await tx.ptBooking.updateMany({
+          where: {
+            id: booking.id,
+            status: BookingStatus.CONFIRMED,
+            attendanceCheckedInAt: null,
+          },
+          data: { attendanceCheckedInAt: checkedInAt },
+        });
+        if (!updated.count) continue;
+        await tx.auditLog.create({
+          data: {
+            actorId: recordedById,
+            action: 'RECORD_PT_ATTENDANCE_CHECKIN',
+            entityType: 'PtBooking',
+            entityId: booking.id,
+            metadata: { checkedInAt },
+          },
+        });
+      }
+      return bookings.length;
+    });
+  }
+
   async checkin(dto: CheckinDto, user: AuthUser) {
     const isStaff =
       user.roles.includes(RoleCode.OWNER) ||
@@ -935,6 +1047,7 @@ export class OperationsService {
       };
     });
 
+    await this.recordPtAttendanceCheckin(member.id, user.id);
     const todayPtAppointments = await this.listTodayPtAppointments(
       member.id,
       startOfToday,
@@ -948,6 +1061,7 @@ export class OperationsService {
     startOfToday: Date,
     startOfTomorrow: Date,
   ) {
+    const now = new Date();
     const bookings = await this.prisma.ptBooking.findMany({
       where: {
         memberId,
@@ -982,6 +1096,12 @@ export class OperationsService {
         status: booking.status,
         startsAt: booking.slot.startsAt,
         endsAt: booking.slot.endsAt,
+        attendanceCheckedInAt: booking.attendanceCheckedInAt,
+        attendanceWindowOpen:
+          booking.status === BookingStatus.CONFIRMED &&
+          !booking.attendanceCheckedInAt &&
+          now >= this.ptCheckinWindow(booking.slot).opensAt &&
+          now <= this.ptCheckinWindow(booking.slot).closesAt,
         trainer: booking.slot.trainer.user,
       }));
   }

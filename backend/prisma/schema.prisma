@@ -53,6 +53,7 @@ enum BookingStatus {
   PENDING
   CONFIRMED
   CANCEL_REQUESTED
+  AWAITING_COMPLETION
   COMPLETED
   REJECTED
   CANCELLED
@@ -246,6 +247,7 @@ model PtBooking {
   cancellationRequestedById String?
   cancellationRequestedAt   DateTime?
   cancellationReason        String?
+  attendanceCheckedInAt     DateTime?
   completedAt               DateTime?
   createdAt                 DateTime        @default(now())
   updatedAt                 DateTime        @updatedAt
