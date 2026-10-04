@@ -24,7 +24,7 @@
 | TC-20 | Yêu cầu thanh toán quá 48 giờ | EXPIRED, không thể duyệt và không cấp quyền lợi. |
 | TC-20A | Nhân viên gọi thanh toán tiền mặt cho đơn chưa được Hội viên xác nhận | 403 `PAYMENT_MEMBER_CONFIRMATION_REQUIRED`; Order vẫn PENDING, không tạo Payment/Receipt/quyền lợi. |
 | TC-21 | Hai lịch khác nhau trùng giờ của cùng Hội viên | 409 `MEMBER_BOOKING_OVERLAP`. |
-| TC-22 | Đặt/hủy/hoàn thành PT với điểm danh hợp lệ | Reserved tăng khi đặt, giảm khi hủy; sau thời gian đệm chuyển AWAITING_COMPLETION; PT xác nhận thì COMPLETED tăng used và giảm reserved. |
+| TC-22 | Đặt/hủy/hoàn thành PT với điểm danh hợp lệ | Reserved tăng khi đặt, giảm khi hủy; ngay khi hết giờ chuyển AWAITING_COMPLETION; PT xác nhận thì COMPLETED tăng used và giảm reserved. |
 | TC-23 | Hội viên hủy lịch CONFIRMED dưới 4 giờ | Chuyển `CANCEL_REQUESTED`, tiếp tục giữ slot/buổi và thông báo PT/Owner. Chấp nhận mới chuyển CANCELLED và hoàn buổi; từ chối quay về CONFIRMED. |
 | TC-24 | Hết giờ + 5 phút mà không có điểm danh PT | Hệ thống tự chuyển NO_SHOW, giảm reserved, tăng used và thông báo Hội viên/PT. |
 | TC-25 | Member đánh giá PT/Lễ tân chưa từng tương tác | Thành công nếu nhân viên ACTIVE; lưu 1–5 sao và comment, cập nhật điểm tổng hợp. |
@@ -41,7 +41,8 @@
 | TC-36 | Quét lại sau khi lần đầu đã dùng hết lượt cuối của gói Gym | Kiểm tra quyền lợi vẫn nhận ra lượt check-in hôm nay và không báo gói không hợp lệ. |
 | TC-37 | Dùng lại idempotency key của Hội viên khác | 409 `CHECKIN_IDEMPOTENCY_CONFLICT`; không tạo Checkin. |
 | TC-38 | Lễ tân quét Hội viên có lịch PT hôm nay | Nhắc lịch hiện ngay sau bước tra cứu, trước khi xác nhận check-in; không có lịch thì không hiện khối nhắc. |
-| TC-39 | Có điểm danh từ 60 phút trước đến 5 phút sau giờ kết thúc | Hết thời gian đệm chuyển AWAITING_COMPLETION; PT thấy nút Hoàn thành và xác nhận đúng một lần. |
+| TC-39 | Có điểm danh trước hoặc đúng giờ kết thúc | Ngay khi hết giờ chuyển AWAITING_COMPLETION; PT thấy nút Hoàn thành và xác nhận đúng một lần. |
+| TC-39A | Điểm danh trong 5 phút đệm sau giờ kết thúc | Chuyển ngay AWAITING_COMPLETION; PT có thể xác nhận hoàn thành mà không phải chờ hết thời gian đệm. |
 | TC-40 | Không có điểm danh khi hết 5 phút đệm | Tự động NO_SHOW và trừ đúng một buổi; không có nút hay API ngoại lệ để đổi thành COMPLETED. |
 | TC-41 | Hội viên đã check-in Gym từ trước rồi quét lại trong cửa sổ PT | Không tạo/trừ thêm lượt Gym nhưng booking được lưu `attendanceCheckedInAt`. |
 

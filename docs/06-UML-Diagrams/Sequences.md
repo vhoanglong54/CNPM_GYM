@@ -87,13 +87,14 @@ sequenceDiagram
       M-->>UI: Xuất trình QR tại quầy
       UI->>SYS: Ghi điểm danh cho lịch PT
     end
-    Note over SYS: Hết giờ tập + 5 phút
+    Note over SYS: Hết giờ tập
     alt Có điểm danh PT hợp lệ
       SYS-->>T: Chuyển sang Chờ xác nhận hoàn thành
       T->>UI: Chọn Hoàn thành
       UI->>SYS: Ghi nhận đã dùng một buổi
       SYS-->>M: Thông báo buổi tập đã hoàn thành
     else Không có điểm danh PT
+      Note over SYS: Chờ thêm 5 phút
       SYS->>SYS: Tự động ghi nhận Vắng mặt và dùng một buổi
       SYS-->>M: Thông báo vắng mặt
     end

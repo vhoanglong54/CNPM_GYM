@@ -58,7 +58,7 @@ Trừ các endpoint Public, request phải có `Authorization: Bearer <JWT>`. M�
 | GET | `/operations/slots` | Authenticated; hỗ trợ `from`, `to`, `sort=SOONEST\|RATING\|REVIEW_COUNT`. |
 | POST | `/operations/slots` | Trainer có `trainerProfileId`; tạo slot của chính mình. |
 | PATCH | `/operations/slots/:id/close` | Trainer sở hữu hoặc Owner; slot không có booking PENDING/CONFIRMED/CANCEL_REQUESTED/AWAITING_COMPLETION. |
-| GET | `/operations/bookings` | Owner xem tất cả; Trainer xem lịch của mình; Member xem lịch của mình. Đồng thời đối soát booking CONFIRMED đã quá giờ kết thúc + 5 phút: có điểm danh chuyển `AWAITING_COMPLETION`, không có chuyển `NO_SHOW`. |
+| GET | `/operations/bookings` | Owner xem tất cả; Trainer xem lịch của mình; Member xem lịch của mình. Đồng thời đối soát booking CONFIRMED đã hết giờ: có điểm danh chuyển ngay `AWAITING_COMPLETION`; chưa có điểm danh tiếp tục chờ đến hết 5 phút đệm rồi chuyển `NO_SHOW`. |
 | POST | `/operations/bookings` | Member; chọn slot và `memberPtPackageId`. |
 | PATCH | `/operations/bookings/:id/status` | Trainer sở hữu/Owner xử lý; Member hủy sớm trực tiếp, hủy CONFIRMED dưới 4 giờ tạo `CANCEL_REQUESTED`. Chỉ booking `AWAITING_COMPLETION` có điểm danh PT hợp lệ mới chuyển `COMPLETED`. |
 
@@ -78,7 +78,7 @@ Trừ các endpoint Public, request phải có `Authorization: Bearer <JWT>`. M�
 | POST | `/operations/checkins` | Owner, Receptionist; cần `memberCode`, `idempotencyKey`, có thể chọn `memberMembershipId`. Lần quét lại không ghi/trừ thêm lượt Gym nhưng vẫn ghi `attendanceCheckedInAt` cho booking PT nếu thời điểm nằm trong cửa sổ từ -60 đến +5 phút. |
 | GET | `/operations/checkins` | Member xem của mình; Owner/Receptionist xem tối đa 100 lượt gần nhất. |
 
-`todayPtAppointments` liệt kê booking hoạt động trong ngày, kèm giờ, tên PT và thời điểm điểm danh nếu đã có. Endpoint check-in không hoàn thành booking; nó chỉ lưu bằng chứng điểm danh PT để đối soát sau thời gian đệm.
+`todayPtAppointments` liệt kê booking hoạt động trong ngày, kèm giờ, tên PT, trạng thái cửa sổ điểm danh và thời điểm điểm danh nếu đã có. Endpoint check-in không hoàn thành booking; nếu quét trong 5 phút đệm sau giờ kết thúc, booking được chuyển ngay sang chờ PT xác nhận.
 
 Lưu ý phản ánh đúng implementation hiện tại: `GET /operations/checkins` mới chỉ có JWT guard ở controller. Frontend không cấp trang Check-in cho Trainer, nhưng service hiện dùng nhánh danh sách chung cho tài khoản không có `memberProfileId`; vì vậy Trainer gọi API trực tiếp vẫn có thể nhận danh sách chung. Đây là sai lệch RBAC cần sửa ở mã nguồn nếu yêu cầu bảo mật là Trainer không được xem check-in.
 

@@ -28,7 +28,7 @@ Ngoại lệ: gói ngừng bán, đơn rỗng/hủy, xác nhận lặp, nhân vi
 3. Transaction tạo booking `PENDING`, giữ một buổi PT và chặn trùng lịch của slot lẫn Hội viên.
 4. Trainer chuyển sang `CONFIRMED` hoặc `REJECTED` kèm lý do; từ chối hoàn buổi đang giữ.
 5. Quét/xác nhận tại quầy trong khoảng 60 phút trước giờ bắt đầu đến 5 phút sau giờ kết thúc ghi điểm danh PT; quét lại trong ngày không tạo thêm check-in Gym nhưng vẫn ghi được điểm danh PT.
-6. Hết thời gian đệm, booking có điểm danh tự chuyển `AWAITING_COMPLETION` để PT xác nhận `COMPLETED`; không có điểm danh tự chuyển `NO_SHOW`. Cả `COMPLETED` và `NO_SHOW` tiêu thụ một buổi đã giữ.
+6. Ngay khi hết giờ tập, booking có điểm danh tự chuyển `AWAITING_COMPLETION` để PT xác nhận `COMPLETED`. Booking chưa điểm danh tiếp tục chờ trong 5 phút đệm; hết thời gian này vẫn không có điểm danh thì tự chuyển `NO_SHOW`. Cả `COMPLETED` và `NO_SHOW` tiêu thụ một buổi đã giữ.
 7. Lịch PENDING hoặc lịch CONFIRMED còn ít nhất 4 giờ được Hội viên hủy ngay; PT hủy trước giờ bắt đầu cũng có hiệu lực ngay. Hệ thống chuyển `CANCELLED`, giải phóng slot, hoàn buổi và báo bên còn lại.
 8. Hội viên yêu cầu hủy lịch CONFIRMED dưới 4 giờ làm lịch chuyển `CANCEL_REQUESTED`; slot và buổi vẫn được giữ cho đến khi PT/Owner chấp nhận hoặc từ chối.
 

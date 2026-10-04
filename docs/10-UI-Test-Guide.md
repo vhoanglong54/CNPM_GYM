@@ -173,7 +173,7 @@ Kết quả mong đợi:
 2. Hội viên kiểm tra trạng thái đổi thành **Đã xác nhận**.
 3. Trong khoảng 60 phút trước giờ bắt đầu đến 5 phút sau giờ kết thúc, Lễ tân quét QR và xác nhận tại quầy.
 4. Nếu Hội viên đã check-in Gym từ trước trong ngày, quét lại và chọn **Xác nhận điểm danh lịch PT**; hệ thống không tạo thêm lượt Gym.
-5. Sau giờ kết thúc và hết 5 phút đệm, mở lại **Lịch PT**: booking phải chuyển **Chờ PT xác nhận hoàn thành**.
+5. Ngay sau giờ kết thúc, mở lại **Lịch PT**: nếu đã điểm danh, booking phải chuyển **Chờ PT xác nhận hoàn thành**.
 6. PT chọn **Hoàn thành**, sau đó Hội viên mở **Hồ sơ** và kiểm tra số buổi còn lại giảm một.
 7. Tạo lịch khác, không quét trong cửa sổ điểm danh và chờ hết thời gian đệm: hệ thống tự chuyển **Vắng mặt**, trừ một buổi và gửi thông báo.
 
@@ -223,7 +223,7 @@ Kết quả mong đợi:
 - Mỗi hội viên chỉ được ghi nhận một lần trong cùng ngày, tránh tăng sai số ngày tập hoặc trừ nhiều lượt.
 - Nếu Hội viên quay lại trong ngày, giao diện báo đã check-in; hệ thống không tạo/trừ lượt Gym lần hai nhưng vẫn ghi điểm danh booking PT khi xác nhận đúng cửa sổ.
 - Chỉ khi có lịch PT hoạt động trong ngày, khối nhắc mới xuất hiện ngay sau khi quét/tra cứu; không có lịch thì không hiện khối rỗng.
-- Điểm danh PT hợp lệ từ 60 phút trước giờ bắt đầu đến 5 phút sau giờ kết thúc. Điểm danh không tự hoàn thành booking; sau thời gian đệm PT mới nhận trạng thái chờ xác nhận.
+- Điểm danh PT hợp lệ từ 60 phút trước giờ bắt đầu đến 5 phút sau giờ kết thúc. Nếu đã điểm danh, ngay khi hết giờ PT nhận trạng thái chờ xác nhận; 5 phút đệm chỉ dành cho trường hợp chưa kịp điểm danh.
 - Hội viên chỉ hiển thị QR và lịch sử của mình; chỉ Lễ tân/Chủ phòng có quyền ghi nhận check-in.
 
 ## 7. Quản lý gói, hội viên và nhân sự

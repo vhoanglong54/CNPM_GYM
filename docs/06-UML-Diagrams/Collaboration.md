@@ -56,7 +56,7 @@ flowchart LR
   BOOKING -->|12b. Không điểm danh: tự động vắng mặt| M
 ```
 
-Hết 5 phút đệm, buổi có điểm danh chuyển sang chờ PT xác nhận hoàn thành; buổi không có điểm danh tự chuyển vắng mặt. Cả hoàn thành và vắng mặt đều chuyển buổi đang giữ thành đã dùng.
+Ngay khi hết giờ, buổi có điểm danh chuyển sang chờ PT xác nhận hoàn thành. Buổi chưa điểm danh được chờ thêm 5 phút; nếu vẫn không có điểm danh thì tự chuyển vắng mặt. Cả hoàn thành và vắng mặt đều chuyển buổi đang giữ thành đã dùng.
 Chủ phòng có thể hỗ trợ xử lý lịch; chỉ PT mở khung giờ của chính mình.
 
 ## 3. Check-in QR
