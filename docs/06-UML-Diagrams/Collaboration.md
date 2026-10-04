@@ -16,17 +16,17 @@ flowchart LR
 
   M -->|1. Chọn gói| UI
   UI -->|2. Tạo đơn chờ thanh toán| ORDER
-  M -->|3. Báo đã chuyển khoản| UI
-  UI -->|4. Gửi yêu cầu duyệt| NOTICE
+  M -->|3. Xác nhận chuyển khoản hoặc tiền mặt| UI
+  UI -->|4. Tạo yêu cầu chờ duyệt| NOTICE
   NOTICE -->|5. Báo giao dịch mới| S
-  S -->|6. Xác nhận hoặc từ chối| UI
+  S -->|6. Sau yêu cầu: xác nhận thu hoặc từ chối| UI
   UI -->|7. Cập nhật kết quả| ORDER
   ORDER -->|8a. Nếu thành công: kích hoạt| BENEFIT
   ORDER -->|8b. Nếu thành công: tạo| RECEIPT
   ORDER -->|9. Thông báo kết quả| M
 ```
 
-Với tiền mặt, quy trình bắt đầu từ bước 6: nhân viên xác nhận đã thu tiền, sau đó hệ thống kích hoạt quyền lợi và tạo phiếu thu.
+Cả chuyển khoản và tiền mặt đều đi từ bước 3. Khi Hội viên chưa xác nhận, nhân viên chỉ thấy trạng thái chờ và không thể chuyển đơn sang đã thanh toán.
 
 ## 2. Đặt lịch PT
 

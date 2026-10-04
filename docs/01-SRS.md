@@ -9,7 +9,7 @@ Ngoài phạm vi: thanh toán thật, hóa đơn điện tử, kế toán thuế
 ## 2. Tác nhân
 
 - **Owner:** toàn quyền vận hành, nhân sự, giá/gói, giao dịch và báo cáo.
-- **Receptionist:** hội viên, hỗ trợ giao dịch tiền mặt mô phỏng, check-in, phiếu thu.
+- **Receptionist:** hội viên, xác nhận giao dịch mô phỏng do Hội viên gửi, check-in, phiếu thu.
 - **Trainer:** mở slot cá nhân; xác nhận, hoàn tất hoặc hủy lịch thuộc mình.
 - **Member:** đăng ký/OTP, mua gói, mock payment, đặt PT, hiển thị QR cá nhân cho nhân viên check-in và xem lịch sử cá nhân.
 
@@ -21,7 +21,7 @@ Ngoài phạm vi: thanh toán thật, hóa đơn điện tử, kế toán thuế
 | FR-02 | Owner tạo Receptionist/Trainer; người dùng công khai không thể tự cấp role. |
 | FR-03 | Backend kiểm tra JWT, role và quyền sở hữu ở mọi endpoint nhạy cảm. |
 | FR-04 | Owner tạo/đóng bán gói Gym/PT; giá tại đơn hàng được snapshot. |
-| FR-05 | Member báo đã chuyển khoản và chờ Lễ tân/Chủ phòng duyệt trong 48 giờ; nhân viên có thể thu và xác nhận tiền mặt tại quầy. |
+| FR-05 | Member phải chọn và xác nhận phương thức chuyển khoản hoặc tiền mặt cho đơn của mình; chỉ sau đó Lễ tân/Chủ phòng mới được xác nhận đã nhận tiền. Yêu cầu chờ tối đa 48 giờ. |
 | FR-06 | Chỉ sau khi nhân viên xác nhận mới chạy transaction PAID: payment → quyền lợi → receipt → audit log; từ chối phải có lý do. |
 | FR-07 | Receipt PDF dùng font Unicode và ghi phương thức, tài khoản/vai trò/thời gian xác nhận; đây là chứng từ mô phỏng, không có giá trị thuế. |
 | FR-08 | Trainer mở slot tương lai không trùng; Member lọc theo ngày, sắp xếp theo đánh giá/lịch sớm và chỉ đặt slot còn trống. |
@@ -52,6 +52,6 @@ Ngoài phạm vi: thanh toán thật, hóa đơn điện tử, kế toán thuế
 - Gói Gym theo tháng hiển thị ngày bắt đầu/kết thúc; gói PT hiển thị tổng, đã dùng, đang giữ và còn khả dụng.
 - Lịch PT giữ một buổi từ `PENDING`; `CANCEL_REQUESTED` tiếp tục giữ slot/buổi, `REJECTED`/`CANCELLED` hoàn buổi, `COMPLETED`/`NO_SHOW` trừ một buổi.
 - Hội viên hủy lịch đã xác nhận trước ít nhất 4 giờ được hủy ngay; dưới 4 giờ tạo `CANCEL_REQUESTED` để PT/Chủ phòng chấp nhận hoặc từ chối. PT hủy trước giờ bắt đầu có hiệu lực ngay và hoàn buổi.
-- Yêu cầu xác nhận chuyển khoản hết hạn sau 48 giờ; hết hạn phải gửi yêu cầu mới.
+- Yêu cầu xác nhận thanh toán hết hạn sau 48 giờ; hết hạn phải do Hội viên gửi lại. Nhân viên không được tự chuyển đơn mới tạo sang PAID khi chưa có yêu cầu của Hội viên.
 - Gói PT có hạn dùng mặc định 365 ngày sau kích hoạt.
 - Gói Gym đầu tiên kích hoạt khi đơn chuyển PAID; gói gia hạn nối tiếp ngày kết thúc cuối cùng, không chồng thời hạn.

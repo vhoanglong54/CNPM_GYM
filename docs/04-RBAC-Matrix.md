@@ -8,9 +8,8 @@
 | Tạo/cho nghỉ việc/khôi phục nhân sự | ✓ | — | — | — |
 | Tạo/đóng bán gói | ✓ | Xem | — | Xem |
 | Tạo đơn | — | — | — | ✓ |
-| Xác nhận tiền mặt demo | ✓ | ✓ | — | — |
-| Duyệt/từ chối chuyển khoản | ✓ | ✓ | — | — |
-| Chuyển khoản demo | — | — | — | Đơn của mình |
+| Gửi xác nhận chuyển khoản/tiền mặt | — | — | — | Đơn của mình |
+| Xác nhận thu/từ chối yêu cầu thanh toán | ✓ | ✓ | — | — |
 | Xem receipt | Tất cả đơn PAID | Tất cả đơn PAID | — | Đơn PAID của mình |
 | Mở slot PT | — | — | ✓ | — |
 | Xử lý booking | Xem/xử lý, duyệt hủy muộn | — | Slot của mình, duyệt hủy muộn | Đặt/hủy/yêu cầu hủy của mình |

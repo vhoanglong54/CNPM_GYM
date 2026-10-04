@@ -10,7 +10,7 @@
 | TC-06 | Gói PT không còn buổi khả dụng vì các lịch đang giữ | Không tạo booking; `sessionsReserved` không vượt tổng. |
 | TC-07 | Membership hết hạn | Không tạo check-in. |
 | TC-08 | Gửi lại cùng idempotency key cho cùng Hội viên | Chỉ một Checkin; lần sau trả kết quả cũ với `replayed=true`, không trừ thêm. |
-| TC-09 | Member báo chuyển khoản | Payment `AWAITING_CONFIRMATION`, Order vẫn PENDING, chưa có receipt/quyền lợi. |
+| TC-09 | Member xác nhận chuyển khoản hoặc đã trả tiền mặt | Payment `AWAITING_CONFIRMATION`, Order vẫn PENDING, chưa có receipt/quyền lợi. |
 | TC-10 | Receipt của Order PENDING | `RECEIPT_NOT_AVAILABLE`. |
 | TC-11 | In lại receipt PAID | Cùng receipt; không phát sinh thu. |
 | TC-12 | Dashboard sau PAID | Tổng thu tăng đúng payment PAID. |
@@ -19,9 +19,10 @@
 | TC-15 | Member đặt lịch kèm ghi chú và chọn gói PT | Booking `PENDING` lưu đúng `note` và `memberPtPackageId`. |
 | TC-16 | Trainer đóng slot trống của mình | Slot chuyển `isOpen=false` và biến mất khỏi danh sách khả dụng. |
 | TC-17 | Trainer đóng slot đã có booking hoạt động | 409 `SLOT_HAS_ACTIVE_BOOKING`, slot và booking không đổi. |
-| TC-18 | Lễ tân xác nhận chuyển khoản | Payment/Order PAID, quyền lợi và một Receipt được tạo; lưu đúng tài khoản xác nhận. |
-| TC-19 | Lễ tân từ chối chuyển khoản | Payment REJECTED có lý do; Hội viên được gửi lại yêu cầu. |
-| TC-20 | Yêu cầu chuyển khoản quá 48 giờ | EXPIRED, không thể duyệt và không cấp quyền lợi. |
+| TC-18 | Lễ tân xác nhận yêu cầu thanh toán | Payment/Order PAID, quyền lợi và một Receipt được tạo; lưu đúng phương thức và tài khoản xác nhận. |
+| TC-19 | Lễ tân từ chối yêu cầu thanh toán | Payment REJECTED có lý do; Hội viên được gửi lại yêu cầu. |
+| TC-20 | Yêu cầu thanh toán quá 48 giờ | EXPIRED, không thể duyệt và không cấp quyền lợi. |
+| TC-20A | Nhân viên gọi thanh toán tiền mặt cho đơn chưa được Hội viên xác nhận | 403 `PAYMENT_MEMBER_CONFIRMATION_REQUIRED`; Order vẫn PENDING, không tạo Payment/Receipt/quyền lợi. |
 | TC-21 | Hai lịch khác nhau trùng giờ của cùng Hội viên | 409 `MEMBER_BOOKING_OVERLAP`. |
 | TC-22 | Đặt/hủy/hoàn thành PT với check-in hợp lệ | Reserved tăng khi đặt, giảm khi hủy; COMPLETED tăng used và giảm reserved. |
 | TC-23 | Hội viên hủy lịch CONFIRMED dưới 4 giờ | Chuyển `CANCEL_REQUESTED`, tiếp tục giữ slot/buổi và thông báo PT/Owner. Chấp nhận mới chuyển CANCELLED và hoàn buổi; từ chối quay về CONFIRMED. |

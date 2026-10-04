@@ -102,15 +102,17 @@ Kết quả mong đợi:
 
 ### 4.2 Xác nhận thanh toán tại quầy
 
-1. Trên máy B, tìm đơn chưa có yêu cầu chuyển khoản và chọn **Thu tiền mặt**.
-2. Xác nhận hộp thoại.
-3. Quan sát tiến trình chuyển từ **Đang chờ** sang **Hoàn tất**.
-4. Trên máy A, trạng thái phải tự đổi thành **Đã thanh toán** mà không reload trình duyệt.
-5. Máy A mở **Hồ sơ** để kiểm tra gói vừa mua đã xuất hiện trong quyền lợi.
-6. Ở cả hai máy, chọn **Phiếu thu** để kiểm tra PDF.
+1. Trên máy B, tìm đơn mới tạo và kiểm tra chỉ có nhãn **Chờ Hội viên xác nhận**, không có nút xác nhận thu.
+2. Trên máy A, Hội viên chọn **Xác nhận thanh toán** → **Tôi đã trả tiền mặt** sau khi giao tiền tại quầy.
+3. Kiểm tra Order vẫn chờ, chưa có Phiếu thu/quyền lợi; máy B tự hiện nút **Xác nhận đã thu**.
+4. Trên máy B, chọn **Xác nhận đã thu** và xác nhận hộp thoại.
+5. Quan sát tiến trình chuyển sang **Hoàn tất**; máy A tự đổi thành **Đã thanh toán** mà không reload trình duyệt.
+6. Máy A mở **Hồ sơ** để kiểm tra gói vừa mua đã xuất hiện trong quyền lợi.
+7. Ở cả hai máy, chọn **Phiếu thu** để kiểm tra PDF.
 
 Kết quả mong đợi:
 
+- Nhân viên không thể xác nhận thu trước thao tác của Hội viên; kể cả gọi API trực tiếp cũng phải nhận lỗi 403.
 - Hệ thống chỉ tạo một khoản thanh toán và một phiếu thu.
 - Đơn chuyển sang **Đã thanh toán** và không còn nút thanh toán/hủy.
 - Gói Gym hoặc số buổi PT được kích hoạt tự động.
@@ -120,13 +122,13 @@ Kết quả mong đợi:
 ### 4.3 Hội viên gửi yêu cầu xác nhận chuyển khoản
 
 1. Tạo một đơn khác bằng tài khoản Hội viên.
-2. Tại **Giao dịch**, Hội viên chọn **Tôi đã chuyển khoản**.
+2. Tại **Giao dịch**, Hội viên chọn **Xác nhận thanh toán** → **Tôi đã chuyển khoản**.
 3. Kiểm tra Order vẫn chờ, giao diện hiện **Chờ nhân viên duyệt**, chưa có Phiếu thu và chưa kích hoạt gói.
-4. Lễ tân/Chủ phòng mở **Giao dịch** và chọn **Xác nhận CK** hoặc **Từ chối**.
+4. Lễ tân/Chủ phòng mở **Giao dịch** và chọn **Xác nhận đã nhận CK** hoặc **Từ chối**.
 5. Nếu từ chối, nhập lý do tối thiểu 3 ký tự; Hội viên kiểm tra lý do rồi gửi lại yêu cầu.
 6. Nếu xác nhận, Hội viên kiểm tra trạng thái PAID, quyền lợi và Phiếu thu.
 
-Kết quả mong đợi: chỉ Lễ tân/Chủ phòng có thể chuyển giao dịch sang PAID; yêu cầu quá 48 giờ thành hết hạn; hệ thống hiện chỉ ghi nhận nội bộ, chưa kết nối cổng ngân hàng thật.
+Kết quả mong đợi: Hội viên phải tạo yêu cầu trước; sau đó chỉ Lễ tân/Chủ phòng có thể chuyển giao dịch sang PAID. Yêu cầu quá 48 giờ thành hết hạn; hệ thống hiện chỉ ghi nhận nội bộ, chưa kết nối cổng ngân hàng thật.
 
 ### 4.4 Hủy đơn
 
@@ -258,7 +260,7 @@ Lưu ý: chạy lại `npm run db:seed` sẽ đặt lại mật khẩu của cá
 
 ### 8.1 Thông báo công việc
 
-1. Tạo yêu cầu chuyển khoản hoặc đặt lịch PT ở một tài khoản.
+1. Tạo yêu cầu thanh toán hoặc đặt lịch PT ở một tài khoản.
 2. Mở **Thông báo** ở tài khoản nhân viên/PT liên quan và chờ tối đa 15 giây.
 3. Xử lý yêu cầu rồi kiểm tra thông báo kết quả ở tài khoản Hội viên.
 4. Với lịch CONFIRMED bắt đầu trong 24 giờ, mở lại trang và kiểm tra chỉ có một thông báo nhắc lịch dù tải lại nhiều lần.
@@ -269,8 +271,8 @@ Kết quả mong đợi: chỉ đúng người nhận thấy thông báo; số c
 ### 8.2 Báo cáo và đối soát
 
 1. Đăng nhập Chủ phòng và mở **Báo cáo**.
-2. Đối chiếu số chuyển khoản chờ duyệt với trang **Giao dịch**.
-3. Thực hiện một giao dịch tiền mặt rồi kiểm tra bảng **Tiền mặt hôm nay**, người thu và tổng tiền.
+2. Đối chiếu số thanh toán chờ duyệt với trang **Giao dịch**.
+3. Để Hội viên gửi xác nhận tiền mặt, nhân viên xác nhận thu rồi kiểm tra bảng **Tiền mặt hôm nay**, người thu và tổng tiền.
 4. Đối chiếu doanh thu theo người xác nhận, trạng thái/điểm PT và nhật ký thao tác gần đây.
 
 Kết quả mong đợi: chỉ Chủ phòng truy cập được; doanh thu chỉ lấy Payment PAID và đối soát ngày theo `Asia/Ho_Chi_Minh`.
@@ -281,7 +283,7 @@ Kịch bản nhanh:
 
 1. Mỗi máy mở [https://titan-gym-web.vercel.app](https://titan-gym-web.vercel.app); không cần một máy đóng vai trò máy chủ.
 2. Máy A đăng nhập Hội viên, máy B đăng nhập Lễ tân, máy C đăng nhập Chủ phòng, máy D đăng nhập PT. Có thể dùng nhiều tab trên cùng máy vì mỗi tab lưu phiên riêng.
-3. Máy A tạo đơn, báo đã chuyển khoản; B/C nhìn thấy yêu cầu chờ và một trong hai máy xác nhận.
+3. Máy A tạo đơn rồi xác nhận phương thức thanh toán; trước đó B/C không có nút xác nhận thu. Sau khi A gửi, B/C nhìn thấy yêu cầu chờ và một trong hai máy xác nhận.
 4. A nhìn thấy đơn hoàn tất và quyền lợi mới.
 5. D mở ca PT; A (với tài khoản có gói PT) đặt lịch; D xác nhận.
 6. B check-in một hội viên; C quan sát dashboard/lịch sử.

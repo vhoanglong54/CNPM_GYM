@@ -13,13 +13,13 @@ Ngoại lệ: email trùng (BR-01), OTP sai/hết hạn/đã dùng (BR-03), gử
 
 1. Member chọn sản phẩm đang bán và tạo Order `PENDING`.
 2. OrderItem snapshot tên, mô tả và đơn giá.
-3. Member chọn **Tôi đã chuyển khoản** → Payment `AWAITING_CONFIRMATION`, Order vẫn `PENDING`, chưa cấp quyền lợi/receipt.
-4. Lễ tân/Chủ phòng xác nhận hoặc từ chối kèm lý do. Yêu cầu tự hết hạn sau 48 giờ.
-5. Với tiền mặt, Lễ tân/Chủ phòng chọn **Thu tiền mặt** và xác nhận trực tiếp.
-6. Chỉ khi được xác nhận, transaction chuyển Payment/Order sang `PAID`, kích hoạt quyền lợi, tạo Receipt và lưu tài khoản xác nhận.
+3. Member chọn **Xác nhận thanh toán**, sau đó xác nhận đã chuyển khoản hoặc đã trả tiền mặt tại quầy → Payment `AWAITING_CONFIRMATION`, Order vẫn `PENDING`, chưa cấp quyền lợi/receipt.
+4. Trước bước 3, Lễ tân/Chủ phòng chỉ thấy **Chờ Hội viên xác nhận** và không có quyền xác nhận thu.
+5. Sau bước 3, Lễ tân/Chủ phòng xác nhận đã nhận tiền hoặc từ chối kèm lý do. Yêu cầu tự hết hạn sau 48 giờ.
+6. Chỉ khi nhân viên xác nhận, transaction chuyển Payment/Order sang `PAID`, kích hoạt quyền lợi, tạo Receipt và lưu tài khoản xác nhận.
 7. Member/nhân viên xem PDF; Owner thấy tổng thu và đối soát cập nhật.
 
-Ngoại lệ: gói ngừng bán, đơn rỗng/hủy, xác nhận lặp, sai vai trò/phương thức.
+Ngoại lệ: gói ngừng bán, đơn rỗng/hủy, xác nhận lặp, nhân viên cố bỏ qua bước xác nhận của Hội viên, sai vai trò/phương thức.
 
 ## UC-03 — Booking PT
 
@@ -49,7 +49,7 @@ Owner xem tổng payment PAID, phân loại phương thức, hội viên ACTIVE,
 
 ## UC-07 — Thông báo công việc
 
-Hệ thống tạo thông báo cho đúng người nhận khi có chuyển khoản chờ duyệt/kết quả duyệt, yêu cầu hoặc thay đổi lịch PT, yêu cầu hủy muộn, hoàn thành/vắng mặt và đánh giá nhân viên. Khi mở trung tâm thông báo, hệ thống tạo một nhắc lịch chống trùng cho mỗi booking CONFIRMED bắt đầu trong 24 giờ tới. Người dùng xem tối đa 50 thông báo gần nhất và đánh dấu từng thông báo hoặc tất cả là đã đọc.
+Hệ thống tạo thông báo cho đúng người nhận khi có thanh toán chờ duyệt/kết quả duyệt, yêu cầu hoặc thay đổi lịch PT, yêu cầu hủy muộn, hoàn thành/vắng mặt và đánh giá nhân viên. Khi mở trung tâm thông báo, hệ thống tạo một nhắc lịch chống trùng cho mỗi booking CONFIRMED bắt đầu trong 24 giờ tới. Người dùng xem tối đa 50 thông báo gần nhất và đánh dấu từng thông báo hoặc tất cả là đã đọc.
 
 ## UC-08 — Đánh giá nhân viên
 

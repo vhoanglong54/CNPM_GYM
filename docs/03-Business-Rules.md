@@ -7,7 +7,7 @@
 | BR-03 | OTP phải đúng, chưa dùng, còn hạn, dưới 5 lần thử. | `OTP_INVALID` |
 | BR-04–05 | Guard role + kiểm tra ownership ở service. | `FORBIDDEN` |
 | BR-06–07 | Giá > 0, thời hạn/lượt > 0; chỉ mua sản phẩm active. | `PRODUCT_UNAVAILABLE` |
-| BR-08 | Member chuyển khoản chỉ tạo yêu cầu chờ xác nhận 48 giờ; quyền lợi/receipt chỉ sinh trong transaction PAID sau khi nhân viên duyệt. | `PAYMENT_ALREADY_AWAITING`, `PAYMENT_REQUEST_EXPIRED` |
+| BR-08 | Member sở hữu đơn phải xác nhận chuyển khoản hoặc tiền mặt trước để tạo yêu cầu chờ 48 giờ. Lễ tân/Chủ phòng không được tạo Payment PAID trực tiếp; quyền lợi/receipt chỉ sinh sau khi họ duyệt yêu cầu `AWAITING_CONFIRMATION`. | `PAYMENT_MEMBER_CONFIRMATION_REQUIRED`, `PAYMENT_ALREADY_AWAITING`, `PAYMENT_REQUEST_EXPIRED` |
 | BR-09–10 | Gói Gym phải trong hạn, không paused; check-in ghi rõ gói áp dụng và chỉ tạo một bản ghi/Hội viên/ngày. Quét lại trả kết quả đã check-in bình thường, không trừ thêm quyền lợi. | `MEMBERSHIP_INELIGIBLE` |
 | BR-11 | `checkins.idempotency_key` UNIQUE; gửi lại cùng yêu cầu trả kết quả cũ, cùng khóa cho Hội viên khác bị từ chối. | `CHECKIN_IDEMPOTENCY_CONFLICT` |
 | BR-12–14 | Slot tương lai, mở, không bị giữ; Hội viên không trùng lịch; gói PT còn `total-used-reserved`. Trainer/Owner chỉ đóng slot chưa có booking hoạt động. | `BOOKING_SLOT_*`, `MEMBER_BOOKING_OVERLAP`, `PT_SESSIONS_EXHAUSTED` |

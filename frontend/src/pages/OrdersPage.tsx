@@ -10,6 +10,7 @@ import {
   Search,
   ShieldCheck,
   ShoppingBag,
+  X,
   XCircle,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -43,6 +44,7 @@ export function OrdersPage() {
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<OrderFilter>('ALL')
   const [busy, setBusy] = useState('')
+  const [paymentOrder, setPaymentOrder] = useState<Order | null>(null)
   const busyRef = useRef('')
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null)
   const loadRequestRef = useRef(0)
@@ -90,19 +92,18 @@ export function OrdersPage() {
   }, [load])
   /* oxlint-enable react/set-state-in-effect */
 
-  const pay = async (order: Order) => {
-    const action = isStaff ? 'thu tiền mặt và xác nhận' : 'gửi yêu cầu xác nhận chuyển khoản'
-    if (!window.confirm(`Bạn muốn ${action} cho đơn ${order.orderNumber}?`)) return
+  const pay = async (order: Order, method: OrderPayment['method']) => {
     if (busyRef.current) return
     busyRef.current = order.id
     setBusy(order.id)
     dataVersionRef.current += 1
     try {
       const { data } = await api.post<ApiResponse<PaymentActionResult>>(`/orders/${order.id}/pay`, {
-        method: isStaff ? 'CASH' : 'TRANSFER_DEMO',
+        method,
       })
       dataVersionRef.current += 1
       applyPayment(order.id, data.data.payment, data.data.status)
+      setPaymentOrder(null)
       toast.success(data.message)
       publishDataChange('orders', 'profile', 'dashboard', 'reports', 'notifications')
       void load(true)
@@ -114,14 +115,15 @@ export function OrdersPage() {
     }
   }
 
-  const confirmTransfer = async (order: Order, paymentId: string) => {
-    if (!window.confirm(`Xác nhận đã nhận chuyển khoản cho đơn ${order.orderNumber}? Quyền lợi sẽ được kích hoạt ngay.`)) return
+  const confirmPayment = async (order: Order, payment: OrderPayment) => {
+    const methodLabel = payment.method === 'CASH' ? 'đã thu tiền mặt' : 'đã nhận chuyển khoản'
+    if (!window.confirm(`Xác nhận ${methodLabel} cho đơn ${order.orderNumber}? Quyền lợi sẽ được kích hoạt ngay.`)) return
     if (busyRef.current) return
     busyRef.current = order.id
     setBusy(order.id)
     dataVersionRef.current += 1
     try {
-      const { data } = await api.patch<ApiResponse<PaymentActionResult>>(`/orders/${order.id}/payments/${paymentId}/confirm`)
+      const { data } = await api.patch<ApiResponse<PaymentActionResult>>(`/orders/${order.id}/payments/${payment.id}/confirm`)
       dataVersionRef.current += 1
       applyPayment(order.id, data.data.payment, data.data.status)
       toast.success(data.message)
@@ -135,8 +137,9 @@ export function OrdersPage() {
     }
   }
 
-  const rejectTransfer = async (order: Order, paymentId: string) => {
-    const reason = window.prompt(`Lý do từ chối chuyển khoản của đơn ${order.orderNumber}:`)
+  const rejectPayment = async (order: Order, payment: OrderPayment) => {
+    const methodLabel = payment.method === 'CASH' ? 'thanh toán tiền mặt' : 'chuyển khoản'
+    const reason = window.prompt(`Lý do từ chối ${methodLabel} của đơn ${order.orderNumber}:`)
     if (reason === null) return
     if (reason.trim().length < 3) {
       toast.error('Vui lòng nhập lý do từ chối rõ ràng.')
@@ -147,7 +150,7 @@ export function OrdersPage() {
     setBusy(order.id)
     dataVersionRef.current += 1
     try {
-      const { data } = await api.patch<ApiResponse<OrderPayment>>(`/orders/${order.id}/payments/${paymentId}/reject`, { reason: reason.trim() })
+      const { data } = await api.patch<ApiResponse<OrderPayment>>(`/orders/${order.id}/payments/${payment.id}/reject`, { reason: reason.trim() })
       dataVersionRef.current += 1
       applyPayment(order.id, data.data)
       toast.success(data.message)
@@ -218,7 +221,7 @@ export function OrdersPage() {
 
     <section className="order-summary" aria-label="Tổng quan giao dịch">
       <Summary icon={Clock3} label="Đơn đang chờ xử lý" value={counts.pending} tone="pending" />
-      <Summary icon={ShieldCheck} label="Chuyển khoản chờ duyệt" value={counts.awaiting} tone="awaiting" />
+      <Summary icon={ShieldCheck} label="Thanh toán chờ duyệt" value={counts.awaiting} tone="awaiting" />
       <Summary icon={CheckCircle2} label="Đã thanh toán" value={counts.paid} tone="paid" />
       <Summary icon={Banknote} label="Tổng đã thanh toán" value={money(counts.revenue)} tone="revenue" />
     </section>
@@ -226,9 +229,9 @@ export function OrdersPage() {
     <div className="card process-guide">
       <div><span>1</span><strong>Đăng ký gói</strong><small>Hội viên chọn gói phù hợp</small></div>
       <i />
-      <div><span>2</span><strong>Chờ thanh toán</strong><small>Đơn xuất hiện cho hội viên và nhân viên</small></div>
+      <div><span>2</span><strong>Hội viên xác nhận</strong><small>Chọn chuyển khoản hoặc tiền mặt tại quầy</small></div>
       <i />
-      <div><span>3</span><strong>Nhân viên xác nhận</strong><small>Lễ tân/Chủ phòng duyệt chuyển khoản hoặc thu tiền mặt</small></div>
+      <div><span>3</span><strong>Nhân viên xác nhận thu</strong><small>Chỉ xử lý yêu cầu Hội viên đã gửi</small></div>
       <i />
       <div><span>4</span><strong>Kích hoạt quyền lợi</strong><small>Gói tập được cấp tự động</small></div>
     </div>
@@ -251,10 +254,10 @@ export function OrdersPage() {
             <td><b>{money(order.totalAmount)}</b></td>
             <td><OrderFlow order={order} />{latestPayment?.status === 'REJECTED' && <small className="payment-reason">Bị từ chối: {latestPayment.rejectionReason}</small>}{latestPayment?.status === 'EXPIRED' && <small className="payment-reason">Yêu cầu cũ đã hết hạn</small>}</td>
             <td><div className="row-actions order-actions">
-              {order.status === 'PENDING' && isStaff && awaitingPayment && <><button className="btn btn-small btn-confirm" disabled={busy === order.id} onClick={() => void confirmTransfer(order, awaitingPayment.id)}><CheckCircle2 /> {busy === order.id ? 'Đang xác nhận...' : 'Xác nhận CK'}</button><button className="btn btn-small btn-danger" disabled={busy === order.id} onClick={() => void rejectTransfer(order, awaitingPayment.id)}><XCircle /> Từ chối</button></>}
-              {order.status === 'PENDING' && isStaff && !awaitingPayment && <button className="btn btn-small btn-primary" disabled={busy === order.id} onClick={() => void pay(order)}><Banknote /> {busy === order.id ? 'Đang ghi nhận...' : 'Thu tiền mặt'}</button>}
-              {order.status === 'PENDING' && !isStaff && !awaitingPayment && <button className="btn btn-small btn-primary" disabled={busy === order.id} onClick={() => void pay(order)}><Banknote /> {busy === order.id ? 'Đang gửi...' : 'Tôi đã chuyển khoản'}</button>}
-              {order.status === 'PENDING' && !isStaff && awaitingPayment && <span className="status pending"><Clock3 /> Chờ nhân viên duyệt</span>}
+              {order.status === 'PENDING' && isStaff && awaitingPayment && <><button className="btn btn-small btn-confirm" disabled={busy === order.id} onClick={() => void confirmPayment(order, awaitingPayment)}><CheckCircle2 /> {busy === order.id ? 'Đang xác nhận...' : awaitingPayment.method === 'CASH' ? 'Xác nhận đã thu' : 'Xác nhận đã nhận CK'}</button><button className="btn btn-small btn-danger" disabled={busy === order.id} onClick={() => void rejectPayment(order, awaitingPayment)}><XCircle /> Từ chối</button></>}
+              {order.status === 'PENDING' && isStaff && !awaitingPayment && <span className="status pending"><Clock3 /> Chờ Hội viên xác nhận</span>}
+              {order.status === 'PENDING' && !isStaff && !awaitingPayment && <button className="btn btn-small btn-primary" disabled={busy === order.id} onClick={() => setPaymentOrder(order)}><Banknote /> Xác nhận thanh toán</button>}
+              {order.status === 'PENDING' && !isStaff && awaitingPayment && <span className="status pending"><Clock3 /> Chờ Lễ tân/Chủ phòng</span>}
               {order.status === 'PENDING' && <button className="icon-action bad" disabled={busy === order.id} title="Hủy đơn" onClick={() => void cancel(order)}><XCircle /></button>}
               {order.status === 'PAID' && <button className="btn btn-small btn-ghost" onClick={() => void receipt(order)}><Download /> Phiếu thu</button>}
             </div></td>
@@ -263,6 +266,18 @@ export function OrdersPage() {
         {!visible.length && <div className="empty-state"><ReceiptText /><h3>Không có giao dịch phù hợp</h3><p>Thử chọn trạng thái khác hoặc xóa nội dung tìm kiếm.</p></div>}
       </div>
     </div>
+    {paymentOrder && <div className="purchase-modal-backdrop" onMouseDown={() => { if (!busy) setPaymentOrder(null) }}>
+      <section className="purchase-modal payment-modal" role="dialog" aria-modal="true" aria-labelledby="payment-title" onMouseDown={(event) => event.stopPropagation()}>
+        <button className="icon-button purchase-modal-close" type="button" disabled={busy === paymentOrder.id} onClick={() => setPaymentOrder(null)} aria-label="Đóng xác nhận thanh toán"><X /></button>
+        <div className="purchase-modal-icon"><Banknote /></div><span className="eyebrow dark">XÁC NHẬN THANH TOÁN</span><h2 id="payment-title">{paymentOrder.orderNumber}</h2><p>Hãy chọn đúng phương thức bạn đã dùng. Lễ tân hoặc Chủ phòng chỉ có thể xác nhận thu sau bước này.</p>
+        <div className="purchase-summary"><div><span>Gói đăng ký</span><strong>{paymentOrder.items[0]?.productName}</strong></div><div><span>Số tiền</span><strong>{money(paymentOrder.totalAmount)}</strong></div></div>
+        <div className="payment-method-actions">
+          <button className="payment-method-option" type="button" disabled={busy === paymentOrder.id} onClick={() => void pay(paymentOrder, 'TRANSFER_DEMO')}><ShieldCheck /><span><strong>Tôi đã chuyển khoản</strong><small>Gửi yêu cầu để nhân viên đối chiếu và xác nhận.</small></span></button>
+          <button className="payment-method-option" type="button" disabled={busy === paymentOrder.id} onClick={() => void pay(paymentOrder, 'CASH')}><Banknote /><span><strong>Tôi đã trả tiền mặt</strong><small>Chỉ chọn sau khi đã giao tiền tại quầy.</small></span></button>
+        </div>
+        <div className="purchase-note"><ShieldCheck /><span>Đơn vẫn ở trạng thái chờ và chưa kích hoạt gói cho đến khi Lễ tân/Chủ phòng xác nhận đã thu.</span></div>
+      </section>
+    </div>}
   </>
 }
 

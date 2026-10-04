@@ -45,8 +45,8 @@ Trừ các endpoint Public, request phải có `Authorization: Bearer <JWT>`. M�
 |---|---|---|
 | GET | `/orders` | Owner/Receptionist xem tất cả; Member xem đơn của mình. |
 | POST | `/orders` | Member; mỗi đơn chứa một sản phẩm. Nhận `idempotencyKey` UUID để request gửi lặp chỉ trả lại cùng một đơn. |
-| POST | `/orders/:id/pay` | Member sở hữu đơn gửi `TRANSFER_DEMO`; Owner/Receptionist thu `CASH` tại quầy. |
-| PATCH | `/orders/:orderId/payments/:paymentId/confirm` | Owner, Receptionist; duyệt chuyển khoản đang chờ. |
+| POST | `/orders/:id/pay` | Chỉ Member sở hữu đơn; gửi `TRANSFER_DEMO` hoặc `CASH` để tạo Payment `AWAITING_CONFIRMATION`. Nhân viên gọi endpoint này cho đơn của Hội viên bị từ chối. |
+| PATCH | `/orders/:orderId/payments/:paymentId/confirm` | Owner, Receptionist; chỉ duyệt Payment `AWAITING_CONFIRMATION` do Hội viên đã gửi. |
 | PATCH | `/orders/:orderId/payments/:paymentId/reject` | Owner, Receptionist; lý do tối thiểu 3 ký tự. |
 | PATCH | `/orders/:id/cancel` | Owner/Receptionist hoặc Member sở hữu Order PENDING; gọi lại với Order CANCELLED vẫn trả thành công. |
 | GET | `/orders/:id/receipt` | Owner/Receptionist hoặc Member sở hữu Order PAID; trả trực tiếp `application/pdf`. |

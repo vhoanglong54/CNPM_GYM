@@ -41,28 +41,27 @@ sequenceDiagram
   UI->>SYS: Tạo đơn hàng
   SYS-->>UI: Đơn ở trạng thái Chờ thanh toán
 
-  alt Hội viên báo đã chuyển khoản
+  Note over S,SYS: Nhân viên chưa thể xác nhận thu ở bước này
+  M->>UI: Chọn Xác nhận thanh toán
+  alt Đã chuyển khoản
     M->>UI: Chọn Tôi đã chuyển khoản
-    UI->>SYS: Gửi yêu cầu xác nhận
-    SYS-->>S: Thông báo giao dịch chờ duyệt
-    S->>UI: Kiểm tra giao dịch
-    alt Xác nhận hợp lệ
-      UI->>SYS: Xác nhận thanh toán
-      SYS->>SYS: Kích hoạt quyền lợi và tạo phiếu thu
-      SYS-->>M: Thông báo thanh toán thành công
-    else Từ chối
-      UI->>SYS: Từ chối kèm lý do
-      SYS-->>M: Thông báo lý do để gửi lại yêu cầu
-    end
-  else Thu tiền mặt tại quầy
-    S->>UI: Chọn Thu tiền mặt
-    UI->>SYS: Xác nhận đã thu tiền
+  else Đã trả tiền mặt tại quầy
+    M->>UI: Chọn Tôi đã trả tiền mặt
+  end
+  UI->>SYS: Tạo yêu cầu thanh toán chờ duyệt
+  SYS-->>S: Thông báo giao dịch chờ xác nhận thu
+  S->>UI: Kiểm tra giao dịch
+  alt Xác nhận đã nhận tiền
+    UI->>SYS: Xác nhận thanh toán
     SYS->>SYS: Kích hoạt quyền lợi và tạo phiếu thu
     SYS-->>M: Thông báo thanh toán thành công
+  else Từ chối
+    UI->>SYS: Từ chối kèm lý do
+    SYS-->>M: Thông báo lý do để gửi lại yêu cầu
   end
 ```
 
-Yêu cầu chuyển khoản chờ duyệt tối đa 48 giờ. Phiếu thu ghi rõ phương thức, thời gian và tài khoản Lễ tân/Chủ phòng đã xác nhận.
+Mọi phương thức đều phải do Hội viên xác nhận trước và chờ duyệt tối đa 48 giờ. Phiếu thu ghi rõ phương thức, thời gian và tài khoản Lễ tân/Chủ phòng đã xác nhận.
 
 ## 3. Đặt và xử lý lịch PT
 
