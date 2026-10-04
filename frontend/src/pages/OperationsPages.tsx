@@ -27,7 +27,7 @@ import { publishDataChange, subscribeDataChanges } from '../lib/liveUpdates'
 import { createRequestGate } from '../lib/requestGate'
 import type { ApiResponse, Profile } from '../types'
 
-type BookingStatus = 'PENDING' | 'CONFIRMED' | 'CANCEL_REQUESTED' | 'COMPLETED' | 'REJECTED' | 'CANCELLED' | 'NO_SHOW'
+type BookingStatus = 'PENDING' | 'CONFIRMED' | 'CANCEL_REQUESTED' | 'AWAITING_COMPLETION' | 'COMPLETED' | 'REJECTED' | 'CANCELLED' | 'NO_SHOW'
 type BookingFilter = 'ACTIVE' | 'ALL' | BookingStatus
 type SlotSort = 'SOONEST' | 'RATING' | 'REVIEW_COUNT'
 
@@ -88,6 +88,8 @@ interface TodayPtAppointment {
   status: BookingStatus
   startsAt: string
   endsAt: string
+  attendanceCheckedInAt?: string | null
+  attendanceWindowOpen: boolean
   trainer: { id: string; fullName: string }
 }
 
@@ -105,6 +107,7 @@ const statusLabels: Record<BookingStatus, string> = {
   PENDING: 'Chờ PT xác nhận',
   CONFIRMED: 'Đã xác nhận',
   CANCEL_REQUESTED: 'Chờ duyệt hủy',
+  AWAITING_COMPLETION: 'Chờ PT xác nhận hoàn thành',
   COMPLETED: 'Đã hoàn thành',
   REJECTED: 'Bị từ chối',
   CANCELLED: 'Đã hủy',
@@ -117,6 +120,7 @@ const filterLabels: Array<{ value: BookingFilter; label: string }> = [
   { value: 'PENDING', label: 'Chờ xác nhận' },
   { value: 'CONFIRMED', label: 'Đã xác nhận' },
   { value: 'CANCEL_REQUESTED', label: 'Chờ duyệt hủy' },
+  { value: 'AWAITING_COMPLETION', label: 'Chờ hoàn thành' },
   { value: 'COMPLETED', label: 'Hoàn thành' },
   { value: 'REJECTED', label: 'Bị từ chối' },
   { value: 'CANCELLED', label: 'Đã hủy' },
@@ -210,7 +214,7 @@ export function SchedulePage() {
 
   const visibleBookings = useMemo(() => bookings.filter((booking) => {
     if (filter === 'ALL') return true
-    if (filter === 'ACTIVE') return booking.status === 'PENDING' || booking.status === 'CONFIRMED'
+    if (filter === 'ACTIVE') return booking.status === 'PENDING' || booking.status === 'CONFIRMED' || booking.status === 'CANCEL_REQUESTED'
     return booking.status === filter
   }), [bookings, filter])
 
@@ -313,6 +317,7 @@ export function SchedulePage() {
   }
 
   const activeCount = bookings.filter((item) => ['PENDING', 'CONFIRMED', 'CANCEL_REQUESTED'].includes(item.status)).length
+  const awaitingCompletionCount = bookings.filter((item) => item.status === 'AWAITING_COMPLETION').length
   const completedCount = bookings.filter((item) => item.status === 'COMPLETED').length
   const remainingSessions = eligiblePackages.reduce((total, item) => total + item.sessionsTotal - item.sessionsUsed - item.sessionsReserved, 0)
 
@@ -333,7 +338,7 @@ export function SchedulePage() {
       <ScheduleStat icon={CalendarClock} label={member ? 'Khung giờ có thể đặt' : 'Khung giờ đang mở'} value={visibleSlots.length} />
       <ScheduleStat icon={Clock3} label="Lịch đang diễn ra" value={activeCount} />
       <ScheduleStat icon={CheckCircle2} label="Buổi đã hoàn thành" value={completedCount} />
-      <ScheduleStat icon={Dumbbell} label={member ? 'Số buổi PT còn lại' : 'Tổng lịch được quản lý'} value={member ? remainingSessions : bookings.length} />
+      <ScheduleStat icon={Dumbbell} label={member ? 'Số buổi PT còn lại' : 'Chờ PT xác nhận hoàn thành'} value={member ? remainingSessions : awaitingCompletionCount} />
     </section>
 
     {showSlotForm && <SlotForm onDone={() => { dataVersionRef.current += 1; setShowSlotForm(false); void load() }} />}
@@ -391,16 +396,15 @@ export function SchedulePage() {
     <div className="card booking-list">
       {visibleBookings.length ? visibleBookings.map((item) => <div className="booking-row" key={item.id}>
         <div className="calendar-tile"><b>{appDateParts(item.slot.startsAt).day}</b><span>TH {appDateParts(item.slot.startsAt).month}</span></div>
-        <div className="grow booking-person"><strong>{member ? item.slot.trainer.user.fullName : item.member.user.fullName}</strong><small>{formatDate(item.slot.startsAt)} · {formatTime(item.slot.startsAt)} – {formatTime(item.slot.endsAt)}</small><small>{item.memberPtPackage.package.name}</small>{item.note && <p><MessageSquareText /> {item.note}</p>}{item.cancellationReason && <p className="cancellation-request-note"><Clock3 /> Yêu cầu hủy: {item.cancellationReason}</p>}{item.resolutionReason && <p className="resolution-reason"><XCircle /> {item.resolutionReason}</p>}{trainer && item.status === 'CONFIRMED' && <p className={`pt-attendance-note ${item.completionCheckinAt ? 'ready' : 'missing'}`}><ScanLine /> {item.completionCheckinAt ? `Hội viên đã check-in lúc ${formatAppTime(item.completionCheckinAt)} trước giờ PT.` : 'Chưa có check-in Gym trước giờ PT; không thể xác nhận hoàn thành.'}</p>}</div>
+        <div className="grow booking-person"><strong>{member ? item.slot.trainer.user.fullName : item.member.user.fullName}</strong><small>{formatDate(item.slot.startsAt)} · {formatTime(item.slot.startsAt)} – {formatTime(item.slot.endsAt)}</small><small>{item.memberPtPackage.package.name}</small>{item.note && <p><MessageSquareText /> {item.note}</p>}{item.cancellationReason && <p className="cancellation-request-note"><Clock3 /> Yêu cầu hủy: {item.cancellationReason}</p>}{item.resolutionReason && <p className="resolution-reason"><XCircle /> {item.resolutionReason}</p>}{trainer && item.status === 'CONFIRMED' && <p className={`pt-attendance-note ${item.completionCheckinAt ? 'ready' : 'missing'}`}><ScanLine /> {item.completionCheckinAt ? `Đã check-in hợp lệ lúc ${formatAppTime(item.completionCheckinAt)}. Sau thời gian đệm, buổi tập sẽ chờ xác nhận hoàn thành.` : `Chờ check-in từ ${formatAppTime(new Date(Date.parse(item.slot.startsAt) - 60 * 60 * 1000))} đến ${formatAppTime(new Date(Date.parse(item.slot.endsAt) + 5 * 60 * 1000))}.`}</p>}{trainer && item.status === 'AWAITING_COMPLETION' && <p className="pt-attendance-note ready"><ScanLine /> Check-in hợp lệ lúc {item.completionCheckinAt ? formatAppTime(item.completionCheckinAt) : 'đã được ghi nhận'}; vui lòng xác nhận hoàn thành.</p>}</div>
         <span className={`status ${item.status.toLowerCase()}`}>{statusLabels[item.status]}</span>
         <div className="row-actions">
           {trainer && item.status === 'PENDING' && <button className="btn btn-small btn-confirm" disabled={busy === item.id} onClick={() => beginBookingAction(item, 'CONFIRMED')}><CheckCircle2 /> Xác nhận</button>}
           {trainer && item.status === 'PENDING' && <button className="btn btn-small btn-danger" disabled={busy === item.id} onClick={() => beginBookingAction(item, 'REJECTED')}><XCircle /> Từ chối</button>}
-          {trainer && item.status === 'CONFIRMED' && <button className="btn btn-small btn-primary" title={!item.completionCheckinAt ? 'Hội viên phải check-in Gym trước giờ PT.' : Date.parse(item.slot.startsAt) > currentTime ? 'Chưa đến giờ bắt đầu buổi PT.' : 'Xác nhận buổi PT đã hoàn thành.'} disabled={busy === item.id || !item.completionCheckinAt || currentTime === 0 || Date.parse(item.slot.startsAt) > currentTime} onClick={() => beginBookingAction(item, 'COMPLETED')}>Hoàn thành</button>}
-          {trainer && item.status === 'CONFIRMED' && <button className="btn btn-small btn-ghost" disabled={busy === item.id} onClick={() => beginBookingAction(item, 'NO_SHOW')}>Vắng mặt</button>}
+          {trainer && item.status === 'AWAITING_COMPLETION' && <button className="btn btn-small btn-primary" disabled={busy === item.id} onClick={() => beginBookingAction(item, 'COMPLETED')}><CheckCircle2 /> Hoàn thành</button>}
           {(trainer || owner) && item.status === 'CANCEL_REQUESTED' && <button className="btn btn-small btn-confirm" disabled={busy === item.id} onClick={() => beginBookingAction(item, 'CANCELLED')}><CheckCircle2 /> Chấp nhận hủy</button>}
           {(trainer || owner) && item.status === 'CANCEL_REQUESTED' && <button className="btn btn-small btn-danger" disabled={busy === item.id} onClick={() => beginBookingAction(item, 'CONFIRMED')}><XCircle /> Từ chối hủy</button>}
-          {(member || trainer) && ['PENDING', 'CONFIRMED'].includes(item.status) && <button className="btn btn-small btn-danger" disabled={busy === item.id} onClick={() => beginBookingAction(item, 'CANCELLED')}><XCircle /> {member && item.status === 'CONFIRMED' ? 'Hủy / yêu cầu hủy' : 'Hủy lịch'}</button>}
+          {(member || trainer) && ['PENDING', 'CONFIRMED'].includes(item.status) && (currentTime === 0 || Date.parse(item.slot.startsAt) > currentTime) && <button className="btn btn-small btn-danger" disabled={busy === item.id} onClick={() => beginBookingAction(item, 'CANCELLED')}><XCircle /> {member && item.status === 'CONFIRMED' ? 'Hủy / yêu cầu hủy' : 'Hủy lịch'}</button>}
         </div>
       </div>) : <div className="empty-state"><CalendarCheck /><h3>Không có lịch trong bộ lọc này</h3><p>Lịch mới và thay đổi trạng thái sẽ xuất hiện tại đây.</p></div>}
     </div>
@@ -446,7 +450,7 @@ function formatDate(value: string) {
 
 function TodayPtReminder({ appointments }: { appointments: TodayPtAppointment[] }) {
   if (!appointments.length) return null
-  return <div className="today-pt-schedule pt-reminder"><h4><CalendarClock /> Hôm nay Hội viên có lịch PT</h4><div>{appointments.map((appointment) => <article key={appointment.id}><span><strong>{formatAppTime(appointment.startsAt)} – {formatAppTime(appointment.endsAt)}</strong><small>PT {appointment.trainer.fullName}</small></span><em className={`status ${appointment.status.toLowerCase()}`}>{statusLabels[appointment.status]}</em></article>)}</div></div>
+  return <div className="today-pt-schedule pt-reminder"><h4><CalendarClock /> Hôm nay Hội viên có lịch PT</h4><div>{appointments.map((appointment) => <article key={appointment.id}><span><strong>{formatAppTime(appointment.startsAt)} – {formatAppTime(appointment.endsAt)}</strong><small>PT {appointment.trainer.fullName}{appointment.attendanceCheckedInAt ? ` · Đã điểm danh lúc ${formatAppTime(appointment.attendanceCheckedInAt)}` : ''}</small></span><em className={`status ${appointment.status.toLowerCase()}`}>{statusLabels[appointment.status]}</em></article>)}</div></div>
 }
 
 export function CheckinPage() {
@@ -464,6 +468,7 @@ export function CheckinPage() {
   const [loadRequestGate] = useState(createRequestGate)
   const [eligibilityRequestGate] = useState(createRequestGate)
   const isMember = user?.roles.includes('MEMBER')
+  const hasOpenPtAttendanceWindow = eligibility?.todayPtAppointments.some((appointment) => appointment.attendanceWindowOpen) ?? false
   const load = useCallback(async (silent = false) => {
     const token = loadRequestGate.begin()
     try {
@@ -571,8 +576,8 @@ export function CheckinPage() {
         {eligibility && <div className="eligibility-panel">
           <div className={`eligibility-member ${eligibility.alreadyCheckedIn ? 'checked' : eligibility.eligibleForGymCheckin ? '' : 'ineligible'}`}><div><strong>{eligibility.member.fullName}</strong><small>{eligibility.member.memberCode} · {eligibility.member.email}</small></div><span>{eligibility.alreadyCheckedIn ? 'Đã check-in hôm nay' : eligibility.eligibleForGymCheckin ? 'Đủ điều kiện' : 'Chưa có gói Gym'}</span></div>
           <TodayPtReminder appointments={eligibility.todayPtAppointments} />
-          <p>{eligibility.alreadyCheckedIn ? 'Hệ thống sẽ không ghi thêm lượt hoặc trừ quyền lợi.' : eligibility.eligibleForGymCheckin ? 'Chọn đúng gói sẽ được ghi nhận cho lượt check-in này:' : eligibility.ineligibilityReason}</p>
-          {eligibility.eligibleForGymCheckin && <><div className="membership-choices">{eligibility.memberships.filter((membership) => !eligibility.alreadyCheckedIn || membership.id === eligibility.recommendedMembershipId).map((membership) => <label className={selectedMembershipId === membership.id ? 'selected' : ''} key={membership.id}><input type="radio" name="checkin-membership" value={membership.id} checked={selectedMembershipId === membership.id} disabled={eligibility.alreadyCheckedIn} onChange={() => setSelectedMembershipId(membership.id)} /><span><strong>{membership.planName}</strong><small>{membership.type === 'DURATION' ? `Còn ${membership.remainingDays ?? 0} ngày · hết hạn ${membership.endDate ? formatAppDate(membership.endDate) : '—'}` : `Còn ${Math.max(0, (membership.visitsTotal ?? 0) - membership.visitsUsed)}/${membership.visitsTotal ?? 0} lượt`}</small></span>{membership.id === eligibility.recommendedMembershipId && <em>{eligibility.alreadyCheckedIn ? 'Gói đã dùng' : 'Đề xuất'}</em>}</label>)}</div><button type="button" className="btn btn-primary btn-wide" disabled={busy || !selectedMembershipId} onClick={() => void checkin()}><CheckCircle2 /> {busy ? 'Đang kiểm tra...' : eligibility.alreadyCheckedIn ? 'Xem kết quả check-in hôm nay' : `Xác nhận với ${eligibility.memberships.find((item) => item.id === selectedMembershipId)?.planName ?? 'gói đã chọn'}`}</button></>}
+          <p>{eligibility.alreadyCheckedIn ? (hasOpenPtAttendanceWindow ? 'Lượt vào Gym không bị ghi thêm. Hãy xác nhận để ghi điểm danh cho lịch PT hiện tại.' : 'Hệ thống sẽ không ghi thêm lượt hoặc trừ quyền lợi.') : eligibility.eligibleForGymCheckin ? 'Chọn đúng gói sẽ được ghi nhận cho lượt check-in này:' : eligibility.ineligibilityReason}</p>
+          {eligibility.eligibleForGymCheckin && <><div className="membership-choices">{eligibility.memberships.filter((membership) => !eligibility.alreadyCheckedIn || membership.id === eligibility.recommendedMembershipId).map((membership) => <label className={selectedMembershipId === membership.id ? 'selected' : ''} key={membership.id}><input type="radio" name="checkin-membership" value={membership.id} checked={selectedMembershipId === membership.id} disabled={eligibility.alreadyCheckedIn} onChange={() => setSelectedMembershipId(membership.id)} /><span><strong>{membership.planName}</strong><small>{membership.type === 'DURATION' ? `Còn ${membership.remainingDays ?? 0} ngày · hết hạn ${membership.endDate ? formatAppDate(membership.endDate) : '—'}` : `Còn ${Math.max(0, (membership.visitsTotal ?? 0) - membership.visitsUsed)}/${membership.visitsTotal ?? 0} lượt`}</small></span>{membership.id === eligibility.recommendedMembershipId && <em>{eligibility.alreadyCheckedIn ? 'Gói đã dùng' : 'Đề xuất'}</em>}</label>)}</div><button type="button" className="btn btn-primary btn-wide" disabled={busy || !selectedMembershipId} onClick={() => void checkin()}><CheckCircle2 /> {busy ? 'Đang kiểm tra...' : eligibility.alreadyCheckedIn ? (hasOpenPtAttendanceWindow ? 'Xác nhận điểm danh lịch PT' : 'Xem kết quả check-in hôm nay') : `Xác nhận với ${eligibility.memberships.find((item) => item.id === selectedMembershipId)?.planName ?? 'gói đã chọn'}`}</button></>}
         </div>}
         {checkinResult && <div className={`checkin-result ${checkinResult.alreadyCheckedIn ? 'repeat' : 'success'}`}>
           <div className="checkin-result-heading"><span>{checkinResult.alreadyCheckedIn ? <Clock3 /> : <CheckCircle2 />}</span><div><strong>{checkinResult.alreadyCheckedIn ? 'Đã check-in hôm nay' : 'Check-in thành công'}</strong><small>{checkinResult.alreadyCheckedIn ? `${checkinResult.member.fullName} · ${checkinResult.member.memberCode} · lần đầu lúc ${formatAppTime(checkinResult.checkedInAt)} · không ghi thêm lượt` : `${checkinResult.member.fullName} · ${checkinResult.member.memberCode} · ${checkinResult.plan} · ${formatAppTime(checkinResult.checkedInAt)}`}</small></div></div>
