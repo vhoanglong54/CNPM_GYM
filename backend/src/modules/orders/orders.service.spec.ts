@@ -16,6 +16,14 @@ const staffUser = {
   roles: [RoleCode.RECEPTIONIST],
 };
 
+const memberUser = {
+  id: 'member-user-1',
+  email: 'member@gym.local',
+  fullName: 'Hội viên Test',
+  roles: [RoleCode.MEMBER],
+  memberProfileId: 'member-profile-1',
+};
+
 function pendingPayment() {
   return {
     id: 'payment-1',
@@ -141,5 +149,104 @@ describe('OrdersService payment confirmation', () => {
       status: OrderStatus.PAID,
       receipt: { id: 'receipt-1' },
     });
+  });
+});
+
+describe('OrdersService order idempotency', () => {
+  it('trả lại cùng đơn khi trình duyệt gửi lặp khóa xác nhận mua', async () => {
+    const existingOrder = {
+      id: 'order-1',
+      memberId: memberUser.id,
+      status: OrderStatus.PENDING,
+      items: [{ id: 'item-1' }],
+    };
+    const create = vi.fn();
+    const service = new OrdersService(
+      {
+        order: {
+          findUnique: vi.fn().mockResolvedValue(existingOrder),
+          create,
+        },
+      } as never,
+      {} as never,
+    );
+
+    const result = await service.create(
+      {
+        productType: ProductType.MEMBERSHIP,
+        productId: 'plan-1',
+        idempotencyKey: '4b9c5460-fb62-4a55-b58d-13bc75d53d50',
+      },
+      memberUser,
+    );
+
+    expect(result).toBe(existingOrder);
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('trả lại đơn vừa được request song song tạo trước khi unique constraint chặn request sau', async () => {
+    const existingOrder = {
+      id: 'order-1',
+      memberId: memberUser.id,
+      status: OrderStatus.PENDING,
+      items: [{ id: 'item-1' }],
+    };
+    const duplicateKeyError = new Prisma.PrismaClientKnownRequestError(
+      'Unique constraint failed.',
+      { code: 'P2002', clientVersion: '6.12.0' },
+    );
+    const findUnique = vi
+      .fn()
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        id: 'plan-1',
+        name: 'Gym 1 Tháng',
+        description: 'Tập không giới hạn',
+        price: 690_000,
+        isActive: true,
+      })
+      .mockResolvedValueOnce(existingOrder);
+    const service = new OrdersService(
+      {
+        order: {
+          findUnique,
+          create: vi.fn().mockRejectedValue(duplicateKeyError),
+        },
+        membershipPlan: { findUnique },
+      } as never,
+      {} as never,
+    );
+
+    const result = await service.create(
+      {
+        productType: ProductType.MEMBERSHIP,
+        productId: 'plan-1',
+        idempotencyKey: '4b9c5460-fb62-4a55-b58d-13bc75d53d50',
+      },
+      memberUser,
+    );
+
+    expect(result).toBe(existingOrder);
+  });
+
+  it('coi yêu cầu hủy lặp là thành công nếu đơn đã được hủy', async () => {
+    const cancelledOrder = {
+      id: 'order-1',
+      memberId: memberUser.id,
+      status: OrderStatus.CANCELLED,
+    };
+    const transaction = vi.fn();
+    const service = new OrdersService(
+      {
+        order: { findUnique: vi.fn().mockResolvedValue(cancelledOrder) },
+        $transaction: transaction,
+      } as never,
+      {} as never,
+    );
+
+    const result = await service.cancel('order-1', memberUser);
+
+    expect(result).toBe(cancelledOrder);
+    expect(transaction).not.toHaveBeenCalled();
   });
 });

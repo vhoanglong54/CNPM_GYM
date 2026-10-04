@@ -1,4 +1,11 @@
-import { IsEnum, IsString, MaxLength, MinLength } from 'class-validator';
+import {
+  IsEnum,
+  IsOptional,
+  IsString,
+  IsUUID,
+  MaxLength,
+  MinLength,
+} from 'class-validator';
 import { PaymentMethod, ProductType } from '@prisma/client';
 
 export class CreateOrderDto {
@@ -7,6 +14,10 @@ export class CreateOrderDto {
 
   @IsString()
   productId!: string;
+
+  @IsOptional()
+  @IsUUID('4', { message: 'Khóa xác nhận mua hàng không hợp lệ.' })
+  idempotencyKey?: string;
 }
 
 export class PayOrderDto {

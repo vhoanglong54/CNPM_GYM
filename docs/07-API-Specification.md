@@ -44,11 +44,11 @@ Trừ các endpoint Public, request phải có `Authorization: Bearer <JWT>`. M�
 | Method | Path | Quyền và phạm vi |
 |---|---|---|
 | GET | `/orders` | Owner/Receptionist xem tất cả; Member xem đơn của mình. |
-| POST | `/orders` | Member; mỗi đơn hiện chứa một sản phẩm. |
+| POST | `/orders` | Member; mỗi đơn chứa một sản phẩm. Nhận `idempotencyKey` UUID để request gửi lặp chỉ trả lại cùng một đơn. |
 | POST | `/orders/:id/pay` | Member sở hữu đơn gửi `TRANSFER_DEMO`; Owner/Receptionist thu `CASH` tại quầy. |
 | PATCH | `/orders/:orderId/payments/:paymentId/confirm` | Owner, Receptionist; duyệt chuyển khoản đang chờ. |
 | PATCH | `/orders/:orderId/payments/:paymentId/reject` | Owner, Receptionist; lý do tối thiểu 3 ký tự. |
-| PATCH | `/orders/:id/cancel` | Owner/Receptionist hoặc Member sở hữu Order PENDING. |
+| PATCH | `/orders/:id/cancel` | Owner/Receptionist hoặc Member sở hữu Order PENDING; gọi lại với Order CANCELLED vẫn trả thành công. |
 | GET | `/orders/:id/receipt` | Owner/Receptionist hoặc Member sở hữu Order PAID; trả trực tiếp `application/pdf`. |
 
 ## Slot và booking PT

@@ -55,6 +55,21 @@ export class OrdersService {
         'Chỉ hội viên mới có thể mua gói.',
         HttpStatus.FORBIDDEN,
       );
+    if (dto.idempotencyKey) {
+      const existing = await this.prisma.order.findUnique({
+        where: { idempotencyKey: dto.idempotencyKey },
+        include: { items: true },
+      });
+      if (existing) {
+        if (existing.memberId !== user.id)
+          throw new ApiError(
+            'ORDER_IDEMPOTENCY_CONFLICT',
+            'Khóa xác nhận mua hàng đã được sử dụng.',
+            HttpStatus.CONFLICT,
+          );
+        return existing;
+      }
+    }
     let product: {
       id: string;
       name: string;
@@ -76,24 +91,40 @@ export class OrdersService {
         'Gói tập hiện không còn khả dụng.',
       );
 
+    const idempotencyKey = dto.idempotencyKey ?? randomUUID();
     const number = `ORD-${Date.now()}-${randomUUID().slice(0, 6).toUpperCase()}`;
-    return this.prisma.order.create({
-      data: {
-        orderNumber: number,
-        memberId: user.id,
-        totalAmount: product.price as number,
-        items: {
-          create: {
-            productType: dto.productType,
-            productId: product.id,
-            productName: product.name,
-            productDescription: product.description,
-            unitPrice: product.price as number,
+    try {
+      return await this.prisma.order.create({
+        data: {
+          orderNumber: number,
+          idempotencyKey,
+          memberId: user.id,
+          totalAmount: product.price as number,
+          items: {
+            create: {
+              productType: dto.productType,
+              productId: product.id,
+              productName: product.name,
+              productDescription: product.description,
+              unitPrice: product.price as number,
+            },
           },
         },
-      },
-      include: { items: true },
-    });
+        include: { items: true },
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        const existing = await this.prisma.order.findUnique({
+          where: { idempotencyKey },
+          include: { items: true },
+        });
+        if (existing?.memberId === user.id) return existing;
+      }
+      throw error;
+    }
   }
 
   async list(user: AuthUser) {
@@ -690,6 +721,7 @@ export class OrdersService {
         'Bạn không có quyền thực hiện thao tác này.',
         HttpStatus.FORBIDDEN,
       );
+    if (order.status === OrderStatus.CANCELLED) return order;
     if (order.status !== OrderStatus.PENDING)
       throw new ApiError(
         'ORDER_NOT_CANCELLABLE',

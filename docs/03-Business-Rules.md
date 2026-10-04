@@ -19,4 +19,5 @@
 | BR-24 | Payment, booking, completion, check-in dùng DB transaction. | Rollback toàn bộ |
 | BR-25 | Hội viên hủy CONFIRMED trước ít nhất 4 giờ được hủy ngay; dưới 4 giờ chuyển `CANCEL_REQUESTED`, tiếp tục giữ lượt/slot và chờ PT hoặc Owner duyệt. PT hủy trước giờ bắt đầu có hiệu lực ngay. | `BOOKING_CANCELLATION_APPROVAL_REQUIRED`, `BOOKING_REASON_REQUIRED` |
 | BR-26 | Mỗi Member được đánh giá một lần cho mỗi Receptionist/Trainer ACTIVE bằng 1–5 sao và nhận xét 3–1000 ký tự; lưu lần sau cập nhật bài cũ, không yêu cầu booking. | `STAFF_NOT_REVIEWABLE`, `MEMBER_PROFILE_REQUIRED` |
-| BR-27 | Check-in theo ngày và mọi thời gian hiển thị dùng `Asia/Ho_Chi_Minh`. | Bảo đảm bởi date-time helper |
+| BR-27 | Chọn gói chỉ mở bước xác nhận; mỗi lần xác nhận mua dùng một khóa idempotency để bấm kép hoặc request gửi lại không tạo đơn trùng. Hủy lặp một đơn đã hủy được xem là thành công. | `ORDER_IDEMPOTENCY_CONFLICT` |
+| BR-28 | Check-in theo ngày và mọi thời gian hiển thị dùng `Asia/Ho_Chi_Minh`. | Bảo đảm bởi date-time helper |
