@@ -38,7 +38,7 @@ export function MembersPage() {
 
   useEffect(() => {
     void load()
-    const timer = window.setInterval(() => void load(), 10_000)
+    const timer = window.setInterval(() => { if (!document.hidden) void load() }, 15_000)
     const refresh = () => { if (!document.hidden) void load() }
     window.addEventListener('focus', refresh)
     document.addEventListener('visibilitychange', refresh)
@@ -98,7 +98,7 @@ export function StaffPage() {
 
   useEffect(() => {
     void load()
-    const timer = window.setInterval(() => void load(), 10_000)
+    const timer = window.setInterval(() => { if (!document.hidden) void load() }, 15_000)
     const refresh = () => { if (!document.hidden) void load() }
     window.addEventListener('focus', refresh)
     document.addEventListener('visibilitychange', refresh)

@@ -80,9 +80,10 @@ Production đã tắt OTP development và sử dụng SMTP đã cấu hình. V�
 ### 4.1 Tạo đơn
 
 1. Máy A vào **Gói tập**.
-2. Chọn một gói Gym hoặc gói PT và xác nhận.
-3. Máy A vào **Giao dịch**.
-4. Máy B cũng mở **Giao dịch** và chờ tối đa 5 giây hoặc bấm **Làm mới**.
+2. Chọn một gói Gym hoặc gói PT; kiểm tra hộp tóm tắt tên gói, quyền lợi và số tiền xuất hiện nhưng chưa tạo đơn.
+3. Chọn **Xác nhận mua gói** một lần; thử bấm nhanh nhiều lần và bảo đảm chỉ tạo đúng một đơn.
+4. Máy A được chuyển sang **Giao dịch**, đơn mới được làm nổi bật.
+5. Máy B cũng mở **Giao dịch** và chờ đồng bộ hoặc bấm **Làm mới**.
 
 Kết quả mong đợi:
 

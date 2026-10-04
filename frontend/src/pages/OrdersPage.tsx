@@ -13,6 +13,7 @@ import {
   XCircle,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { api, getErrorMessage, money } from '../lib/api'
 import { formatAppDateTime, formatAppTime } from '../lib/dateTime'
@@ -36,6 +37,7 @@ const filters: Array<{ value: OrderFilter; label: string }> = [
 
 export function OrdersPage() {
   const { user } = useAuth()
+  const location = useLocation()
   const [orders, setOrders] = useState<Order[]>([])
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<OrderFilter>('ALL')
@@ -45,6 +47,7 @@ export function OrdersPage() {
   const lastAppliedRequestRef = useRef(0)
   const dataVersionRef = useRef(0)
   const isStaff = user?.roles.some((role) => role === 'OWNER' || role === 'RECEPTIONIST')
+  const createdOrderId = (location.state as { createdOrderId?: string } | null)?.createdOrderId
 
   const load = useCallback(async (silent = false) => {
     const requestId = ++loadRequestRef.current
@@ -71,7 +74,7 @@ export function OrdersPage() {
   /* oxlint-disable react/set-state-in-effect -- effect loads server state and registers live refresh */
   useEffect(() => {
     void load()
-    const timer = window.setInterval(() => void load(true), 5000)
+    const timer = window.setInterval(() => { if (!document.hidden) void load(true) }, 10_000)
     const refreshVisiblePage = () => { if (!document.hidden) void load(true) }
     window.addEventListener('focus', refreshVisiblePage)
     document.addEventListener('visibilitychange', refreshVisiblePage)
@@ -92,6 +95,7 @@ export function OrdersPage() {
       const { data } = await api.post<ApiResponse<PaymentActionResult>>(`/orders/${order.id}/pay`, {
         method: isStaff ? 'CASH' : 'TRANSFER_DEMO',
       })
+      dataVersionRef.current += 1
       applyPayment(order.id, data.data.payment, data.data.status)
       toast.success(data.message)
       void load(true)
@@ -108,6 +112,7 @@ export function OrdersPage() {
     dataVersionRef.current += 1
     try {
       const { data } = await api.patch<ApiResponse<PaymentActionResult>>(`/orders/${order.id}/payments/${paymentId}/confirm`)
+      dataVersionRef.current += 1
       applyPayment(order.id, data.data.payment, data.data.status)
       toast.success(data.message)
       void load(true)
@@ -129,6 +134,7 @@ export function OrdersPage() {
     dataVersionRef.current += 1
     try {
       const { data } = await api.patch<ApiResponse<OrderPayment>>(`/orders/${order.id}/payments/${paymentId}/reject`, { reason: reason.trim() })
+      dataVersionRef.current += 1
       applyPayment(order.id, data.data)
       toast.success(data.message)
       void load(true)
@@ -143,13 +149,18 @@ export function OrdersPage() {
     if (!window.confirm(`Hủy đơn ${order.orderNumber}? Thao tác này không thể hoàn tác.`)) return
     setBusy(order.id)
     dataVersionRef.current += 1
+    setOrders((current) => current.map((item) => item.id === order.id ? { ...item, status: 'CANCELLED' } : item))
     try {
       const { data } = await api.patch<ApiResponse<{ status: Order['status'] }>>(`/orders/${order.id}/cancel`)
+      dataVersionRef.current += 1
       setOrders((current) => current.map((item) => item.id === order.id ? { ...item, status: data.data.status } : item))
       toast.success(data.message)
       void load(true)
     } catch (error) {
+      dataVersionRef.current += 1
+      setOrders((current) => current.map((item) => item.id === order.id ? { ...item, status: order.status } : item))
       toast.error(getErrorMessage(error))
+      void load(true)
     } finally {
       setBusy('')
     }
@@ -213,16 +224,16 @@ export function OrdersPage() {
           <tbody>{visible.map((order) => {
             const awaitingPayment = order.payments.find((payment) => payment.status === 'AWAITING_CONFIRMATION')
             const latestPayment = order.payments[0]
-            return <tr key={order.id}>
+            return <tr key={order.id} className={order.id === createdOrderId ? 'new-order' : undefined}>
             <td><strong>{order.orderNumber}</strong><small>{formatAppDateTime(order.createdAt)}</small></td>
             <td><strong>{order.member.fullName}</strong><small>{order.member.email}</small></td>
             <td><strong>{order.items[0]?.productName}</strong><small>{order.items[0]?.productType === 'PT_PACKAGE' ? 'Gói huấn luyện cá nhân' : 'Gói hội viên'}</small></td>
             <td><b>{money(order.totalAmount)}</b></td>
             <td><OrderFlow order={order} />{latestPayment?.status === 'REJECTED' && <small className="payment-reason">Bị từ chối: {latestPayment.rejectionReason}</small>}{latestPayment?.status === 'EXPIRED' && <small className="payment-reason">Yêu cầu cũ đã hết hạn</small>}</td>
             <td><div className="row-actions order-actions">
-              {order.status === 'PENDING' && isStaff && awaitingPayment && <><button className="btn btn-small btn-confirm" disabled={busy === order.id} onClick={() => void confirmTransfer(order, awaitingPayment.id)}><CheckCircle2 /> Xác nhận CK</button><button className="btn btn-small btn-danger" disabled={busy === order.id} onClick={() => void rejectTransfer(order, awaitingPayment.id)}><XCircle /> Từ chối</button></>}
-              {order.status === 'PENDING' && isStaff && !awaitingPayment && <button className="btn btn-small btn-primary" disabled={busy === order.id} onClick={() => void pay(order)}><Banknote /> Thu tiền mặt</button>}
-              {order.status === 'PENDING' && !isStaff && !awaitingPayment && <button className="btn btn-small btn-primary" disabled={busy === order.id} onClick={() => void pay(order)}><Banknote /> Tôi đã chuyển khoản</button>}
+              {order.status === 'PENDING' && isStaff && awaitingPayment && <><button className="btn btn-small btn-confirm" disabled={busy === order.id} onClick={() => void confirmTransfer(order, awaitingPayment.id)}><CheckCircle2 /> {busy === order.id ? 'Đang xác nhận...' : 'Xác nhận CK'}</button><button className="btn btn-small btn-danger" disabled={busy === order.id} onClick={() => void rejectTransfer(order, awaitingPayment.id)}><XCircle /> Từ chối</button></>}
+              {order.status === 'PENDING' && isStaff && !awaitingPayment && <button className="btn btn-small btn-primary" disabled={busy === order.id} onClick={() => void pay(order)}><Banknote /> {busy === order.id ? 'Đang ghi nhận...' : 'Thu tiền mặt'}</button>}
+              {order.status === 'PENDING' && !isStaff && !awaitingPayment && <button className="btn btn-small btn-primary" disabled={busy === order.id} onClick={() => void pay(order)}><Banknote /> {busy === order.id ? 'Đang gửi...' : 'Tôi đã chuyển khoản'}</button>}
               {order.status === 'PENDING' && !isStaff && awaitingPayment && <span className="status pending"><Clock3 /> Chờ nhân viên duyệt</span>}
               {order.status === 'PENDING' && <button className="icon-action bad" disabled={busy === order.id} title="Hủy đơn" onClick={() => void cancel(order)}><XCircle /></button>}
               {order.status === 'PAID' && <button className="btn btn-small btn-ghost" onClick={() => void receipt(order)}><Download /> Phiếu thu</button>}

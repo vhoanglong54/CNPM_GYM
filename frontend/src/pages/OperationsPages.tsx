@@ -148,7 +148,7 @@ export function SchedulePage() {
   /* oxlint-disable react/set-state-in-effect -- effect loads server state and registers live refresh */
   useEffect(() => {
     void load()
-    const timer = window.setInterval(() => void load(true), 5_000)
+    const timer = window.setInterval(() => { if (!document.hidden) void load(true) }, 10_000)
     const refreshVisiblePage = () => { if (!document.hidden) void load(true) }
     window.addEventListener('focus', refreshVisiblePage)
     document.addEventListener('visibilitychange', refreshVisiblePage)
@@ -202,6 +202,7 @@ export function SchedulePage() {
         memberPtPackageId: selectedPackageId,
         note: bookingNote.trim() || undefined,
       })
+      dataVersionRef.current += 1
       toast.success(data.message)
       setSelectedSlot(null)
       await load()
@@ -227,6 +228,7 @@ export function SchedulePage() {
     dataVersionRef.current += 1
     try {
       const { data } = await api.patch<ApiResponse<Partial<Booking> & { status: BookingStatus }>>(`/operations/bookings/${booking.id}/status`, { status, reason })
+      dataVersionRef.current += 1
       setBookings((current) => current.map((item) => item.id === booking.id ? { ...item, ...data.data } : item))
       toast.success(data.message)
       setBookingAction(null)
@@ -254,6 +256,7 @@ export function SchedulePage() {
     dataVersionRef.current += 1
     try {
       const { data } = await api.patch<ApiResponse<unknown>>(`/operations/slots/${slot.id}/close`)
+      dataVersionRef.current += 1
       setSlots((current) => current.filter((item) => item.id !== slot.id))
       toast.success(data.message)
       void load(true)
