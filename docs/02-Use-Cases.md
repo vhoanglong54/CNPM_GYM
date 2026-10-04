@@ -27,7 +27,7 @@ Ngoại lệ: gói ngừng bán, đơn rỗng/hủy, xác nhận lặp, sai vai 
 2. Member lọc ngày, sắp xếp PT theo lịch sớm/đánh giá, chọn gói còn **buổi khả dụng** và gửi yêu cầu.
 3. Transaction tạo booking `PENDING`, giữ một buổi PT và chặn trùng lịch của slot lẫn Hội viên.
 4. Trainer chuyển sang `CONFIRMED` hoặc `REJECTED` kèm lý do; từ chối hoàn buổi đang giữ.
-5. Sau buổi tập, Trainer chọn `COMPLETED` hoặc `NO_SHOW`; cả hai tiêu thụ một buổi đã giữ theo chính sách.
+5. Trainer chỉ có thể chọn `COMPLETED` sau giờ bắt đầu nếu Hội viên đã check-in Gym trong cùng ngày và trước hoặc đúng giờ bắt đầu. `NO_SHOW` chỉ dùng sau giờ kết thúc; cả hai trạng thái tiêu thụ một buổi đã giữ.
 6. Lịch PENDING hoặc lịch CONFIRMED còn ít nhất 4 giờ được Hội viên hủy ngay; PT hủy trước giờ bắt đầu cũng có hiệu lực ngay. Hệ thống chuyển `CANCELLED`, giải phóng slot, hoàn buổi và báo bên còn lại.
 7. Hội viên yêu cầu hủy lịch CONFIRMED dưới 4 giờ làm lịch chuyển `CANCEL_REQUESTED`; slot và buổi vẫn được giữ cho đến khi PT/Owner chấp nhận hoặc từ chối.
 
@@ -35,7 +35,7 @@ Giao diện hiển thị thống kê, bộ lọc và nhãn trạng thái tiếng
 
 ## UC-04 — Check-in
 
-Hội viên xuất trình QR → Lễ tân/Chủ phòng quét hoặc nhập mã → hệ thống trả các gói Gym hợp lệ và gói đề xuất → nhân viên xác nhận gói áp dụng. Lần đầu trong ngày tạo Checkin; lần quét lại trả thông báo đã check-in và không ghi/trừ thêm. Cả hai trường hợp đều hiển thị giờ hẹn và PT của các lịch trong ngày đang chờ xác nhận, đã xác nhận hoặc chờ duyệt hủy. Check-in Gym chỉ kiểm soát lượt vào; PT vẫn xác nhận hoàn thành buổi tập riêng.
+Hội viên xuất trình QR → Lễ tân/Chủ phòng quét hoặc nhập mã → hệ thống trả thông tin Gym và lịch PT trong ngày ngay tại bước tra cứu. Khối nhắc lịch chỉ xuất hiện khi có booking `PENDING`, `CONFIRMED` hoặc `CANCEL_REQUESTED`; không có lịch thì không hiện khối này. Lần check-in đầu tạo bản ghi; quét lại không ghi/trừ thêm. Check-in không tự hoàn thành booking, nhưng là điều kiện để PT xác nhận `COMPLETED`.
 
 ## UC-05 — Quản trị nhân sự
 

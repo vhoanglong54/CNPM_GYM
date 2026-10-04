@@ -86,8 +86,13 @@ sequenceDiagram
     SYS-->>M: Thông báo lịch đã xác nhận
     alt Buổi tập hoàn thành
       T->>UI: Đánh dấu Hoàn thành
-      UI->>SYS: Ghi nhận đã dùng một buổi
-      SYS-->>M: Thông báo buổi tập đã hoàn thành
+      UI->>SYS: Yêu cầu xác nhận hoàn thành
+      alt Đã check-in Gym trước giờ PT
+        SYS->>SYS: Ghi nhận đã dùng một buổi
+        SYS-->>M: Thông báo buổi tập đã hoàn thành
+      else Chưa check-in hoặc check-in muộn
+        SYS-->>UI: Không cho hoàn thành
+      end
     else Hội viên vắng mặt
       T->>UI: Đánh dấu Vắng mặt
       UI->>SYS: Ghi nhận đã dùng một buổi
@@ -134,8 +139,11 @@ sequenceDiagram
   M->>UI: Mở QR cá nhân
   M-->>S: Xuất trình QR
   S->>UI: Quét QR hoặc nhập mã Hội viên
-  UI->>SYS: Kiểm tra quyền lợi
-  SYS-->>UI: Trả thông tin Hội viên và gói hợp lệ
+  UI->>SYS: Kiểm tra quyền lợi và lịch PT hôm nay
+  SYS-->>UI: Trả thông tin Hội viên, gói và lịch PT
+  opt Có lịch PT hôm nay
+    UI-->>S: Hiển nhắc giờ tập và PT ngay khi quét
+  end
   S->>UI: Chọn gói và xác nhận
   UI->>SYS: Ghi nhận check-in
 
@@ -150,7 +158,7 @@ sequenceDiagram
   end
 ```
 
-Hội viên chỉ hiển thị QR; quyền ghi nhận check-in thuộc Lễ tân hoặc Chủ phòng. Check-in Gym không thay đổi booking PT; PT xác nhận hoàn thành buổi tập theo luồng Lịch PT.
+Hội viên chỉ hiển thị QR; quyền ghi nhận check-in thuộc Lễ tân hoặc Chủ phòng. Check-in không tự đổi booking, nhưng check-in không muộn hơn giờ bắt đầu là điều kiện để PT xác nhận hoàn thành.
 
 ## 5. Đánh giá nhân viên
 

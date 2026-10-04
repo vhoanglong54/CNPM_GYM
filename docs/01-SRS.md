@@ -25,8 +25,8 @@ Ngoài phạm vi: thanh toán thật, hóa đơn điện tử, kế toán thuế
 | FR-06 | Chỉ sau khi nhân viên xác nhận mới chạy transaction PAID: payment → quyền lợi → receipt → audit log; từ chối phải có lý do. |
 | FR-07 | Receipt PDF dùng font Unicode và ghi phương thức, tài khoản/vai trò/thời gian xác nhận; đây là chứng từ mô phỏng, không có giá trị thuế. |
 | FR-08 | Trainer mở slot tương lai không trùng; Member lọc theo ngày, sắp xếp theo đánh giá/lịch sớm và chỉ đặt slot còn trống. |
-| FR-09 | Đặt lịch giữ ngay một buổi PT; hủy/từ chối hoàn lượt giữ, COMPLETED/NO_SHOW chuyển lượt giữ thành lượt đã dùng. |
-| FR-10 | Hội viên xuất trình QR cá nhân; Lễ tân/Chủ phòng quét hoặc nhập mã, chọn quyền lợi Gym hợp lệ và xác nhận check-in. API chống gửi lặp bằng idempotency key và chỉ ghi một lượt/Hội viên/ngày. Cả lần đầu và lần quét lại đều trả lịch PT đang hoạt động trong ngày; lần quét lại là kết quả thông tin bình thường, không tạo bản ghi hoặc trừ quyền lợi lần hai. Check-in Gym không đổi trạng thái booking PT. |
+| FR-09 | Đặt lịch giữ ngay một buổi PT; hủy/từ chối hoàn lượt giữ, COMPLETED/NO_SHOW chuyển lượt giữ thành lượt đã dùng. PT chỉ được xác nhận COMPLETED sau giờ bắt đầu khi Hội viên đã check-in Gym trong ngày và không muộn hơn giờ bắt đầu buổi PT. |
+| FR-10 | Hội viên xuất trình QR cá nhân; Lễ tân/Chủ phòng quét hoặc nhập mã. Ngay khi tra cứu, giao diện quầy chỉ hiển khối nhắc lịch PT nếu Hội viên có booking hoạt động trong ngày, kể cả khi không có gói Gym hợp lệ. API chống gửi lặp và chỉ ghi một lượt/Hội viên/ngày; quét lại không ghi/trừ thêm. Check-in không tự đổi booking PT. |
 | FR-11 | Owner xem tổng thu chỉ từ payment PAID, hội viên, check-in, booking và gói sắp hết hạn. |
 | FR-12 | UI hiển thị thông báo tiếng Việt tại thao tác và vô hiệu hóa nút khi đang gửi. |
 | FR-13 | Người dùng xem/cập nhật hồ sơ và đổi mật khẩu sau khi xác nhận mật khẩu hiện tại. |

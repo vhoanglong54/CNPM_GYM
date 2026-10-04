@@ -38,6 +38,7 @@ flowchart LR
   SLOT[Lịch trống của PT]
   PACKAGE[Gói PT của Hội viên]
   BOOKING[Lịch hẹn PT]
+  CHECKIN[Check-in Gym]
   NOTICE[Thông báo]
 
   T -->|1. Mở khung giờ| UI
@@ -49,11 +50,12 @@ flowchart LR
   BOOKING -->|7. Báo yêu cầu mới| NOTICE
   NOTICE -->|8. Gửi đến PT| T
   T -->|9. Xác nhận hoặc từ chối| UI
-  UI -->|10. Cập nhật lịch và số buổi| BOOKING
-  BOOKING -->|11. Thông báo kết quả| M
+  UI -->|10. Khi hoàn thành: kiểm tra check-in trước giờ PT| CHECKIN
+  CHECKIN -->|11. Đủ điều kiện| BOOKING
+  BOOKING -->|12. Cập nhật buổi và thông báo| M
 ```
 
-Khi hoàn thành hoặc vắng mặt, buổi đang giữ chuyển thành đã dùng. Khi từ chối hoặc hủy hợp lệ, buổi đang giữ được hoàn lại. Hủy muộn từ Hội viên giữ nguyên lịch và buổi cho đến khi PT/Chủ phòng chấp nhận; nếu từ chối, lịch quay lại Đã xác nhận.
+Hoàn thành yêu cầu Hội viên check-in Gym cùng ngày và không muộn hơn giờ bắt đầu. Hoàn thành hoặc vắng mặt chuyển buổi đang giữ thành đã dùng; từ chối/hủy hợp lệ hoàn lại buổi.
 Chủ phòng có thể hỗ trợ xử lý lịch; chỉ PT mở khung giờ của chính mình.
 
 ## 3. Check-in QR
@@ -71,16 +73,16 @@ flowchart LR
   M -->|1. Xuất trình| QR
   S -->|2. Quét hoặc nhập mã| UI
   UI -->|3. Kiểm tra| BENEFIT
-  BENEFIT -->|4. Trả gói hợp lệ| UI
-  S -->|5. Chọn gói và xác nhận| UI
-  UI -->|6. Ghi nhận lượt vào| CHECKIN
-  CHECKIN -->|7. Lấy kết quả trong ngày| UI
-  UI -->|8. Tra cứu| PT
-  PT -->|9. Trả giờ hẹn và PT| UI
-  UI -->|10. Trả kết quả và giờ hẹn| S
+  UI -->|4. Tra lịch hôm nay| PT
+  BENEFIT -->|5. Trả quyền lợi| UI
+  PT -->|6. Nếu có: trả giờ hẹn và PT| UI
+  UI -->|7. Nếu có lịch: hiển nhắc ngay| S
+  S -->|8. Chọn gói và xác nhận| UI
+  UI -->|9. Ghi nhận lượt vào| CHECKIN
+  CHECKIN -->|10. Trả kết quả| S
 ```
 
-Nếu Hội viên đã check-in trong ngày, hệ thống trả kết quả bình thường nhưng không tạo thêm bản ghi hoặc trừ thêm lượt. Cả hai trường hợp đều hiển thị lịch PT trong ngày; check-in không tự đánh dấu buổi PT hoàn thành.
+Nhắc lịch chỉ hiện khi Hội viên có lịch PT hoạt động trong ngày. Quét lại không tạo thêm check-in; check-in không tự hoàn thành booking.
 
 ## 4. Đánh giá nhân viên
 

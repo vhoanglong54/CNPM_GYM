@@ -169,11 +169,12 @@ Kết quả mong đợi:
 
 1. PT chọn **Xác nhận** cho yêu cầu đang chờ.
 2. Hội viên kiểm tra trạng thái đổi thành **Đã xác nhận**.
-3. PT chọn **Hoàn thành** sau buổi tập.
-4. Hội viên mở **Hồ sơ** và kiểm tra số buổi còn lại giảm một.
-5. Kiểm tra điểm/số lượt đánh giá của PT vẫn hiển thị trên ca trống và bấm vào được để mở hồ sơ.
+3. Trước giờ PT, Lễ tân quét QR và xác nhận check-in Gym cho Hội viên.
+4. Trên giao diện PT, kiểm tra dòng **Hội viên đã check-in** và nút **Hoàn thành** được mở sau giờ bắt đầu.
+5. Tạo một lịch khác không có check-in trước giờ; kiểm tra nút **Hoàn thành** bị khóa.
+6. PT chọn **Hoàn thành**, sau đó Hội viên mở **Hồ sơ** và kiểm tra số buổi còn lại giảm một.
 
-Kết quả mong đợi: trạng thái đi đúng thứ tự `Chờ xác nhận → Đã xác nhận → Hoàn thành`; một lịch không thể hoàn thành hai lần. PT có thể **Từ chối** kèm lý do; yêu cầu bị từ chối hoàn buổi đang giữ.
+Kết quả mong đợi: trạng thái đi đúng thứ tự `Chờ xác nhận → Đã xác nhận → Hoàn thành`; check-in sau giờ bắt đầu không đủ điều kiện cho lịch đó; một lịch không thể hoàn thành hai lần.
 
 ### 5.4 Hủy lịch
 
@@ -202,7 +203,7 @@ Kết quả mong đợi: không yêu cầu booking trước đó; lần lưu th�
 2. Vào **Check-in** và mở QR thẻ hội viên.
 3. Trên thiết bị tại quầy, đăng nhập Lễ tân `letan@gym.local` hoặc Chủ phòng.
 4. Vào **Check-in**, chọn **Mở camera**, cấp quyền camera và đưa QR hội viên vào khung quét.
-5. Sau khi đọc được `MB-000101`, kiểm tra tên hội viên, số ngày còn lại và gói Gym được đề xuất.
+5. Sau khi đọc được `MB-000101`, kiểm tra tên Hội viên, quyền lợi Gym và khối **Hôm nay Hội viên có lịch PT** xuất hiện ngay nếu có lịch.
 6. Chọn gói cần áp dụng nếu hội viên có nhiều quyền lợi, sau đó chọn **Xác nhận check-in**.
 7. Kiểm tra thẻ kết quả **Check-in thành công** và khối **Lịch PT hôm nay**; nếu có lịch phải hiện đúng giờ, tên PT và trạng thái.
 8. Kiểm tra bản ghi mới trong lịch sử của cả Lễ tân và Hội viên.
@@ -218,8 +219,8 @@ Kết quả mong đợi:
 - Mã sai hoặc không có quyền lợi hợp lệ bị từ chối rõ ràng.
 - Mỗi hội viên chỉ được ghi nhận một lần trong cùng ngày, tránh tăng sai số ngày tập hoặc trừ nhiều lượt.
 - Nếu Hội viên quay lại trong ngày, giao diện báo đã check-in; Lễ tân có thể cho khách qua nhưng hệ thống không tạo bản ghi hoặc trừ lượt lần hai.
-- Cả lần đầu và lần quét lại đều hiện lịch PT đang hoạt động trong ngày hoặc thông báo rõ là không có lịch.
-- Check-in Gym không tự chuyển booking PT sang hoàn thành; PT vẫn thao tác xác nhận buổi tập riêng tại **Lịch PT**.
+- Chỉ khi có lịch PT hoạt động trong ngày, khối nhắc mới xuất hiện ngay sau khi quét/tra cứu; không có lịch thì không hiện khối rỗng.
+- Check-in Gym không tự hoàn thành booking, nhưng phải diễn ra không muộn hơn giờ bắt đầu để PT có thể xác nhận **Hoàn thành**.
 - Hội viên chỉ hiển thị QR và lịch sử của mình; chỉ Lễ tân/Chủ phòng có quyền ghi nhận check-in.
 
 ## 7. Quản lý gói, hội viên và nhân sự

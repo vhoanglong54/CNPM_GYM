@@ -58,9 +58,9 @@ Trừ các endpoint Public, request phải có `Authorization: Bearer <JWT>`. M�
 | GET | `/operations/slots` | Authenticated; hỗ trợ `from`, `to`, `sort=SOONEST\|RATING\|REVIEW_COUNT`. |
 | POST | `/operations/slots` | Trainer có `trainerProfileId`; tạo slot của chính mình. |
 | PATCH | `/operations/slots/:id/close` | Trainer sở hữu hoặc Owner; slot không có booking PENDING/CONFIRMED/CANCEL_REQUESTED. |
-| GET | `/operations/bookings` | Owner xem tất cả; Trainer xem lịch của mình; Member xem lịch của mình. |
+| GET | `/operations/bookings` | Owner xem tất cả; Trainer xem lịch của mình; Member xem lịch của mình. Booking `CONFIRMED` trả `completionCheckinAt` nếu có check-in Gym cùng ngày và không muộn hơn giờ bắt đầu. |
 | POST | `/operations/bookings` | Member; chọn slot và `memberPtPackageId`. |
-| PATCH | `/operations/bookings/:id/status` | Trainer sở hữu/Owner xử lý; Member hủy sớm trực tiếp, hủy CONFIRMED dưới 4 giờ tạo `CANCEL_REQUESTED`. PT/Owner gửi `CANCELLED` để chấp nhận hoặc `CONFIRMED` kèm lý do để từ chối yêu cầu hủy. |
+| PATCH | `/operations/bookings/:id/status` | Trainer sở hữu/Owner xử lý; Member hủy sớm trực tiếp, hủy CONFIRMED dưới 4 giờ tạo `CANCEL_REQUESTED`. `COMPLETED` bị từ chối với `PT_COMPLETION_CHECKIN_REQUIRED` nếu Hội viên không check-in Gym trước hoặc đúng giờ bắt đầu. |
 
 ## Đánh giá nhân viên
 
@@ -74,7 +74,7 @@ Trừ các endpoint Public, request phải có `Authorization: Bearer <JWT>`. M�
 
 | Method | Path | Quyền và phạm vi |
 |---|---|---|
-| GET | `/operations/checkins/eligibility/:memberCode` | Owner, Receptionist; trả gói Gym có thể áp dụng và `alreadyCheckedIn`. Nếu gói theo lượt vừa hết do lần check-in đầu, gói đã dùng vẫn được trả về để tra cứu lần quét lại. |
+| GET | `/operations/checkins/eligibility/:memberCode` | Owner, Receptionist; trả `alreadyCheckedIn`, `eligibleForGymCheckin`, gói Gym có thể áp dụng và `todayPtAppointments` ngay khi quét. Nếu không có gói Gym, endpoint vẫn trả lịch PT để Lễ tân nhận biết nhưng không cho xác nhận check-in Gym. |
 | POST | `/operations/checkins` | Owner, Receptionist; cần `memberCode`, `idempotencyKey`, có thể chọn `memberMembershipId`. Trả `alreadyCheckedIn`, `replayed` và `todayPtAppointments`. Lần quét lại cùng ngày vẫn thành công nhưng không ghi/trừ thêm. |
 | GET | `/operations/checkins` | Member xem của mình; Owner/Receptionist xem tối đa 100 lượt gần nhất. |
 

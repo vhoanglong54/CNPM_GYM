@@ -42,6 +42,7 @@ interface Slot {
 interface Booking {
   id: string
   status: BookingStatus
+  completionCheckinAt?: string | null
   note?: string
   resolutionReason?: string
   cancellationReason?: string
@@ -75,8 +76,11 @@ interface CheckinEligibility {
     visitsUsed: number
     remainingDays?: number
   }>
-  recommendedMembershipId: string
+  recommendedMembershipId: string | null
   alreadyCheckedIn: boolean
+  eligibleForGymCheckin: boolean
+  ineligibilityReason?: string | null
+  todayPtAppointments: TodayPtAppointment[]
 }
 
 interface TodayPtAppointment {
@@ -132,6 +136,7 @@ export function SchedulePage() {
   const [slotDate, setSlotDate] = useState('')
   const [slotSort, setSlotSort] = useState<SlotSort>('SOONEST')
   const [busy, setBusy] = useState('')
+  const [currentTime, setCurrentTime] = useState(0)
   const busyRef = useRef('')
   const [bookingAction, setBookingAction] = useState<{ booking: Booking; status: BookingStatus; title: string } | null>(null)
   const [actionReason, setActionReason] = useState('')
@@ -169,9 +174,13 @@ export function SchedulePage() {
 
   /* oxlint-disable react/set-state-in-effect -- effect loads server state and registers live refresh */
   useEffect(() => {
+    setCurrentTime(Date.now())
     void load()
-    const timer = window.setInterval(() => { if (!document.hidden) void load(true) }, 30_000)
-    const refreshVisiblePage = () => { if (!document.hidden) void load(true) }
+    const refreshVisiblePage = () => {
+      setCurrentTime(Date.now())
+      if (!document.hidden) void load(true)
+    }
+    const timer = window.setInterval(refreshVisiblePage, 30_000)
     const unsubscribe = subscribeDataChanges(['schedule', 'profile'], refreshVisiblePage)
     window.addEventListener('focus', refreshVisiblePage)
     document.addEventListener('visibilitychange', refreshVisiblePage)
@@ -382,12 +391,12 @@ export function SchedulePage() {
     <div className="card booking-list">
       {visibleBookings.length ? visibleBookings.map((item) => <div className="booking-row" key={item.id}>
         <div className="calendar-tile"><b>{appDateParts(item.slot.startsAt).day}</b><span>TH {appDateParts(item.slot.startsAt).month}</span></div>
-        <div className="grow booking-person"><strong>{member ? item.slot.trainer.user.fullName : item.member.user.fullName}</strong><small>{formatDate(item.slot.startsAt)} · {formatTime(item.slot.startsAt)} – {formatTime(item.slot.endsAt)}</small><small>{item.memberPtPackage.package.name}</small>{item.note && <p><MessageSquareText /> {item.note}</p>}{item.cancellationReason && <p className="cancellation-request-note"><Clock3 /> Yêu cầu hủy: {item.cancellationReason}</p>}{item.resolutionReason && <p className="resolution-reason"><XCircle /> {item.resolutionReason}</p>}</div>
+        <div className="grow booking-person"><strong>{member ? item.slot.trainer.user.fullName : item.member.user.fullName}</strong><small>{formatDate(item.slot.startsAt)} · {formatTime(item.slot.startsAt)} – {formatTime(item.slot.endsAt)}</small><small>{item.memberPtPackage.package.name}</small>{item.note && <p><MessageSquareText /> {item.note}</p>}{item.cancellationReason && <p className="cancellation-request-note"><Clock3 /> Yêu cầu hủy: {item.cancellationReason}</p>}{item.resolutionReason && <p className="resolution-reason"><XCircle /> {item.resolutionReason}</p>}{trainer && item.status === 'CONFIRMED' && <p className={`pt-attendance-note ${item.completionCheckinAt ? 'ready' : 'missing'}`}><ScanLine /> {item.completionCheckinAt ? `Hội viên đã check-in lúc ${formatAppTime(item.completionCheckinAt)} trước giờ PT.` : 'Chưa có check-in Gym trước giờ PT; không thể xác nhận hoàn thành.'}</p>}</div>
         <span className={`status ${item.status.toLowerCase()}`}>{statusLabels[item.status]}</span>
         <div className="row-actions">
           {trainer && item.status === 'PENDING' && <button className="btn btn-small btn-confirm" disabled={busy === item.id} onClick={() => beginBookingAction(item, 'CONFIRMED')}><CheckCircle2 /> Xác nhận</button>}
           {trainer && item.status === 'PENDING' && <button className="btn btn-small btn-danger" disabled={busy === item.id} onClick={() => beginBookingAction(item, 'REJECTED')}><XCircle /> Từ chối</button>}
-          {trainer && item.status === 'CONFIRMED' && <button className="btn btn-small btn-primary" disabled={busy === item.id} onClick={() => beginBookingAction(item, 'COMPLETED')}>Hoàn thành</button>}
+          {trainer && item.status === 'CONFIRMED' && <button className="btn btn-small btn-primary" title={!item.completionCheckinAt ? 'Hội viên phải check-in Gym trước giờ PT.' : Date.parse(item.slot.startsAt) > currentTime ? 'Chưa đến giờ bắt đầu buổi PT.' : 'Xác nhận buổi PT đã hoàn thành.'} disabled={busy === item.id || !item.completionCheckinAt || currentTime === 0 || Date.parse(item.slot.startsAt) > currentTime} onClick={() => beginBookingAction(item, 'COMPLETED')}>Hoàn thành</button>}
           {trainer && item.status === 'CONFIRMED' && <button className="btn btn-small btn-ghost" disabled={busy === item.id} onClick={() => beginBookingAction(item, 'NO_SHOW')}>Vắng mặt</button>}
           {(trainer || owner) && item.status === 'CANCEL_REQUESTED' && <button className="btn btn-small btn-confirm" disabled={busy === item.id} onClick={() => beginBookingAction(item, 'CANCELLED')}><CheckCircle2 /> Chấp nhận hủy</button>}
           {(trainer || owner) && item.status === 'CANCEL_REQUESTED' && <button className="btn btn-small btn-danger" disabled={busy === item.id} onClick={() => beginBookingAction(item, 'CONFIRMED')}><XCircle /> Từ chối hủy</button>}
@@ -433,6 +442,11 @@ function formatTime(value: string) {
 
 function formatDate(value: string) {
   return `${appDateParts(value).weekday}, ${formatAppDate(value)}`
+}
+
+function TodayPtReminder({ appointments }: { appointments: TodayPtAppointment[] }) {
+  if (!appointments.length) return null
+  return <div className="today-pt-schedule pt-reminder"><h4><CalendarClock /> Hôm nay Hội viên có lịch PT</h4><div>{appointments.map((appointment) => <article key={appointment.id}><span><strong>{formatAppTime(appointment.startsAt)} – {formatAppTime(appointment.endsAt)}</strong><small>PT {appointment.trainer.fullName}</small></span><em className={`status ${appointment.status.toLowerCase()}`}>{statusLabels[appointment.status]}</em></article>)}</div></div>
 }
 
 export function CheckinPage() {
@@ -493,7 +507,7 @@ export function CheckinPage() {
       const { data } = await api.get<ApiResponse<CheckinEligibility>>(`/operations/checkins/eligibility/${encodeURIComponent(memberCode.trim().toUpperCase())}`)
       if (!eligibilityRequestGate.canApply(token)) return
       setEligibility(data.data)
-      setSelectedMembershipId(data.data.recommendedMembershipId)
+      setSelectedMembershipId(data.data.recommendedMembershipId ?? '')
       checkinKeyRef.current = crypto.randomUUID()
     } catch (error) {
       toast.error(getErrorMessage(error))
@@ -554,11 +568,15 @@ export function CheckinPage() {
         {cameraOpen && <CameraScanner onDetected={acceptScan} onClose={() => setCameraOpen(false)} />}
         {!cameraOpen && <div className="camera-placeholder"><ScanLine /><strong>Quét QR trên điện thoại hội viên</strong><small>Nếu thiết bị không hỗ trợ camera, hãy nhập mã ở bên dưới.</small></div>}
         <form onSubmit={lookup} className="checkin-form"><label>Mã hội viên<input value={code} onChange={(event) => { eligibilityRequestGate.invalidate(); checkinKeyRef.current = ''; setCode(event.target.value.toUpperCase()); setEligibility(null); setCheckinResult(null); setSelectedMembershipId('') }} placeholder="Ví dụ: MB-000101" required /><small>Nhập đúng mã đang hiển thị trên tài khoản Hội viên.</small></label><button className="btn btn-dark btn-wide" disabled={busy || !code.trim()}><ScanLine /> {busy ? 'Đang kiểm tra...' : 'Kiểm tra quyền lợi'}</button></form>
-        {eligibility && <div className="eligibility-panel"><div className={`eligibility-member ${eligibility.alreadyCheckedIn ? 'checked' : ''}`}><div><strong>{eligibility.member.fullName}</strong><small>{eligibility.member.memberCode} · {eligibility.member.email}</small></div><span>{eligibility.alreadyCheckedIn ? 'Đã check-in hôm nay' : 'Đủ điều kiện'}</span></div><p>{eligibility.alreadyCheckedIn ? 'Hệ thống sẽ không ghi thêm lượt hoặc trừ quyền lợi. Tiếp tục để xem lịch PT hôm nay.' : 'Chọn đúng gói sẽ được ghi nhận cho lượt check-in này:'}</p><div className="membership-choices">{eligibility.memberships.filter((membership) => !eligibility.alreadyCheckedIn || membership.id === eligibility.recommendedMembershipId).map((membership) => <label className={selectedMembershipId === membership.id ? 'selected' : ''} key={membership.id}><input type="radio" name="checkin-membership" value={membership.id} checked={selectedMembershipId === membership.id} disabled={eligibility.alreadyCheckedIn} onChange={() => setSelectedMembershipId(membership.id)} /><span><strong>{membership.planName}</strong><small>{membership.type === 'DURATION' ? `Còn ${membership.remainingDays ?? 0} ngày · hết hạn ${membership.endDate ? formatAppDate(membership.endDate) : '—'}` : `Còn ${Math.max(0, (membership.visitsTotal ?? 0) - membership.visitsUsed)}/${membership.visitsTotal ?? 0} lượt`}</small></span>{membership.id === eligibility.recommendedMembershipId && <em>{eligibility.alreadyCheckedIn ? 'Gói đã dùng' : 'Đề xuất'}</em>}</label>)}</div><button type="button" className="btn btn-primary btn-wide" disabled={busy || !selectedMembershipId} onClick={() => void checkin()}><CheckCircle2 /> {busy ? 'Đang kiểm tra...' : eligibility.alreadyCheckedIn ? 'Xem kết quả và lịch PT hôm nay' : `Xác nhận với ${eligibility.memberships.find((item) => item.id === selectedMembershipId)?.planName ?? 'gói đã chọn'}`}</button></div>}
+        {eligibility && <div className="eligibility-panel">
+          <div className={`eligibility-member ${eligibility.alreadyCheckedIn ? 'checked' : eligibility.eligibleForGymCheckin ? '' : 'ineligible'}`}><div><strong>{eligibility.member.fullName}</strong><small>{eligibility.member.memberCode} · {eligibility.member.email}</small></div><span>{eligibility.alreadyCheckedIn ? 'Đã check-in hôm nay' : eligibility.eligibleForGymCheckin ? 'Đủ điều kiện' : 'Chưa có gói Gym'}</span></div>
+          <TodayPtReminder appointments={eligibility.todayPtAppointments} />
+          <p>{eligibility.alreadyCheckedIn ? 'Hệ thống sẽ không ghi thêm lượt hoặc trừ quyền lợi.' : eligibility.eligibleForGymCheckin ? 'Chọn đúng gói sẽ được ghi nhận cho lượt check-in này:' : eligibility.ineligibilityReason}</p>
+          {eligibility.eligibleForGymCheckin && <><div className="membership-choices">{eligibility.memberships.filter((membership) => !eligibility.alreadyCheckedIn || membership.id === eligibility.recommendedMembershipId).map((membership) => <label className={selectedMembershipId === membership.id ? 'selected' : ''} key={membership.id}><input type="radio" name="checkin-membership" value={membership.id} checked={selectedMembershipId === membership.id} disabled={eligibility.alreadyCheckedIn} onChange={() => setSelectedMembershipId(membership.id)} /><span><strong>{membership.planName}</strong><small>{membership.type === 'DURATION' ? `Còn ${membership.remainingDays ?? 0} ngày · hết hạn ${membership.endDate ? formatAppDate(membership.endDate) : '—'}` : `Còn ${Math.max(0, (membership.visitsTotal ?? 0) - membership.visitsUsed)}/${membership.visitsTotal ?? 0} lượt`}</small></span>{membership.id === eligibility.recommendedMembershipId && <em>{eligibility.alreadyCheckedIn ? 'Gói đã dùng' : 'Đề xuất'}</em>}</label>)}</div><button type="button" className="btn btn-primary btn-wide" disabled={busy || !selectedMembershipId} onClick={() => void checkin()}><CheckCircle2 /> {busy ? 'Đang kiểm tra...' : eligibility.alreadyCheckedIn ? 'Xem kết quả check-in hôm nay' : `Xác nhận với ${eligibility.memberships.find((item) => item.id === selectedMembershipId)?.planName ?? 'gói đã chọn'}`}</button></>}
+        </div>}
         {checkinResult && <div className={`checkin-result ${checkinResult.alreadyCheckedIn ? 'repeat' : 'success'}`}>
           <div className="checkin-result-heading"><span>{checkinResult.alreadyCheckedIn ? <Clock3 /> : <CheckCircle2 />}</span><div><strong>{checkinResult.alreadyCheckedIn ? 'Đã check-in hôm nay' : 'Check-in thành công'}</strong><small>{checkinResult.alreadyCheckedIn ? `${checkinResult.member.fullName} · ${checkinResult.member.memberCode} · lần đầu lúc ${formatAppTime(checkinResult.checkedInAt)} · không ghi thêm lượt` : `${checkinResult.member.fullName} · ${checkinResult.member.memberCode} · ${checkinResult.plan} · ${formatAppTime(checkinResult.checkedInAt)}`}</small></div></div>
-          <div className="today-pt-schedule"><h4><CalendarClock /> Lịch PT hôm nay</h4>{checkinResult.todayPtAppointments.length ? <div>{checkinResult.todayPtAppointments.map((appointment) => <article key={appointment.id}><span><strong>{formatAppTime(appointment.startsAt)} – {formatAppTime(appointment.endsAt)}</strong><small>PT {appointment.trainer.fullName}</small></span><em className={`status ${appointment.status.toLowerCase()}`}>{statusLabels[appointment.status]}</em></article>)}</div> : <p>Hôm nay hội viên không có lịch PT.</p>}</div>
-          <small className="pt-status-note">Check-in Gym không thay đổi trạng thái lịch PT; PT xác nhận hoàn thành buổi tập riêng.</small>
+          <TodayPtReminder appointments={checkinResult.todayPtAppointments} />
         </div>}
       </div>}
       <div className="card"><div className="card-heading"><div><span className="eyebrow dark">HOẠT ĐỘNG GẦN ĐÂY</span><h3>{isMember ? 'Lịch sử vào tập của tôi' : 'Lịch sử check-in'}</h3></div></div><div className="timeline">{history.length ? history.slice(0, 10).map((item) => <div className="timeline-item" key={item.id}><i /><div><strong>{item.member.user.fullName}</strong><small>{item.memberMembership.plan.name}</small></div><time>{formatAppDateTime(item.checkedInAt)}</time></div>) : <div className="empty-state"><Clock3 /><p>Chưa có lượt check-in.</p></div>}</div></div>

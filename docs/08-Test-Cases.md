@@ -23,7 +23,7 @@
 | TC-19 | Lễ tân từ chối chuyển khoản | Payment REJECTED có lý do; Hội viên được gửi lại yêu cầu. |
 | TC-20 | Yêu cầu chuyển khoản quá 48 giờ | EXPIRED, không thể duyệt và không cấp quyền lợi. |
 | TC-21 | Hai lịch khác nhau trùng giờ của cùng Hội viên | 409 `MEMBER_BOOKING_OVERLAP`. |
-| TC-22 | Đặt/hủy/hoàn thành PT | Reserved tăng khi đặt, giảm khi hủy; COMPLETED tăng used và giảm reserved. |
+| TC-22 | Đặt/hủy/hoàn thành PT với check-in hợp lệ | Reserved tăng khi đặt, giảm khi hủy; COMPLETED tăng used và giảm reserved. |
 | TC-23 | Hội viên hủy lịch CONFIRMED dưới 4 giờ | Chuyển `CANCEL_REQUESTED`, tiếp tục giữ slot/buổi và thông báo PT/Owner. Chấp nhận mới chuyển CANCELLED và hoàn buổi; từ chối quay về CONFIRMED. |
 | TC-24 | PT đánh dấu NO_SHOW sau giờ kết thúc | Trừ một buổi, trạng thái NO_SHOW. |
 | TC-25 | Member đánh giá PT/Lễ tân chưa từng tương tác | Thành công nếu nhân viên ACTIVE; lưu 1–5 sao và comment, cập nhật điểm tổng hợp. |
@@ -39,5 +39,8 @@
 | TC-35 | Check-in lần đầu hoặc quét lại khi có lịch PT trong ngày | Cả hai kết quả đều hiển thị đúng giờ, PT và trạng thái; booking không bị thay đổi. |
 | TC-36 | Quét lại sau khi lần đầu đã dùng hết lượt cuối của gói Gym | Kiểm tra quyền lợi vẫn nhận ra lượt check-in hôm nay và không báo gói không hợp lệ. |
 | TC-37 | Dùng lại idempotency key của Hội viên khác | 409 `CHECKIN_IDEMPOTENCY_CONFLICT`; không tạo Checkin. |
+| TC-38 | Lễ tân quét Hội viên có lịch PT hôm nay | Nhắc lịch hiện ngay sau bước tra cứu, trước khi xác nhận check-in; không có lịch thì không hiện khối nhắc. |
+| TC-39 | PT hoàn thành lịch khi không có check-in trước giờ bắt đầu | Nút Hoàn thành bị khóa; gọi API trực tiếp bị từ chối `PT_COMPLETION_CHECKIN_REQUIRED`, gói PT không bị trừ. |
+| TC-40 | Hội viên check-in sau giờ bắt đầu buổi PT | Check-in không được dùng để hoàn thành booking đó; PT xử lý `NO_SHOW` sau giờ kết thúc. |
 
 Automated hiện kiểm tra health/controller cơ bản, ranh giới ngày `Asia/Ho_Chi_Minh`, check-in mới/quét lại/idempotency/lịch PT, JWT cũ bị chặn sau khi tài khoản nghỉ việc, yêu cầu hủy muộn và đánh giá nhân viên; các TC còn lại cần được chạy lại với database test hoặc theo `docs/10-UI-Test-Guide.md` sau mỗi migration/deploy.
