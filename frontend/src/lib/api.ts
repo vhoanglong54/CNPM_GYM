@@ -3,6 +3,24 @@ import { clearAuthSession, getAuthToken } from './authSession'
 
 interface RetryableRequestConfig extends InternalAxiosRequestConfig {
   _retried?: boolean
+  _activityTracked?: boolean
+}
+
+let activeRequests = 0
+
+export function getActiveRequestCount() {
+  return activeRequests
+}
+
+function updateNetworkActivity(delta: number) {
+  activeRequests = Math.max(0, activeRequests + delta)
+  window.dispatchEvent(new CustomEvent('gym:network-activity', { detail: activeRequests }))
+}
+
+function finishNetworkActivity(config?: RetryableRequestConfig) {
+  if (!config?._activityTracked) return
+  config._activityTracked = false
+  updateNetworkActivity(-1)
 }
 
 export const api = axios.create({
@@ -11,19 +29,28 @@ export const api = axios.create({
 })
 
 api.interceptors.request.use((config) => {
+  const trackedConfig = config as RetryableRequestConfig
+  if (!trackedConfig._activityTracked) {
+    trackedConfig._activityTracked = true
+    updateNetworkActivity(1)
+  }
   const token = getAuthToken()
   if (token) config.headers.Authorization = `Bearer ${token}`
   return config
 })
 
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    finishNetworkActivity(response.config as RetryableRequestConfig)
+    return response
+  },
   async (error) => {
+    const config = error.config as RetryableRequestConfig | undefined
+    finishNetworkActivity(config)
     if (error.response?.status === 401 && getAuthToken()) {
       clearAuthSession()
       window.dispatchEvent(new Event('gym:unauthorized'))
     }
-    const config = error.config as RetryableRequestConfig | undefined
     const shouldRetry =
       config?.method?.toLowerCase() === 'get' &&
       !config._retried &&

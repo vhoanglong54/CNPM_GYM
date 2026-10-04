@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { BarChart3, Bell, CalendarDays, ClipboardCheck, Dumbbell, LogOut, Menu, PackageOpen, ReceiptText, ShieldCheck, Star, UserRound, Users, X, Zap } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
+import { getActiveRequestCount } from '../lib/api'
 import type { Role } from '../types'
 
 const roleLabels: Record<Role, string> = {
@@ -25,9 +26,27 @@ const nav = [
 export function AppShell() {
   const { user, logout } = useAuth()
   const [open, setOpen] = useState(false)
+  const [activeRequests, setActiveRequests] = useState(0)
+  const [online, setOnline] = useState(navigator.onLine)
   const location = useLocation()
   const items = nav.filter((item) => item.roles.some((role) => user?.roles.includes(role as Role)))
   const current = items.find((item) => item.to === location.pathname)?.label || 'Titan Gym'
+
+  useEffect(() => {
+    let mounted = true
+    const updateActivity = (event: Event) => setActiveRequests((event as CustomEvent<number>).detail)
+    const updateOnline = () => setOnline(navigator.onLine)
+    window.addEventListener('gym:network-activity', updateActivity)
+    window.addEventListener('online', updateOnline)
+    window.addEventListener('offline', updateOnline)
+    queueMicrotask(() => { if (mounted) setActiveRequests(getActiveRequestCount()) })
+    return () => {
+      mounted = false
+      window.removeEventListener('gym:network-activity', updateActivity)
+      window.removeEventListener('online', updateOnline)
+      window.removeEventListener('offline', updateOnline)
+    }
+  }, [])
 
   return <div className="app-shell">
     <aside className={`sidebar ${open ? 'sidebar-open' : ''}`}>
@@ -46,7 +65,7 @@ export function AppShell() {
     </aside>
     {open && <button className="sidebar-overlay" onClick={() => setOpen(false)} aria-label="Đóng menu" />}
     <main className="main-area">
-      <header className="topbar"><button className="icon-button mobile-menu" onClick={() => setOpen(true)}><Menu /></button><div><small>TRUNG TÂM ĐIỀU HÀNH</small><h1>{current}</h1></div><div className="live"><i /> Hệ thống ổn định</div></header>
+      <header className="topbar"><button className="icon-button mobile-menu" onClick={() => setOpen(true)}><Menu /></button><div><small>TRUNG TÂM ĐIỀU HÀNH</small><h1>{current}</h1></div><div className={`live ${!online ? 'offline' : activeRequests ? 'syncing' : ''}`} aria-live="polite"><i /> {!online ? 'Mất kết nối' : activeRequests ? 'Đang đồng bộ...' : 'Đã đồng bộ'}</div></header>
       <div className="page"><Outlet /></div>
     </main>
   </div>
