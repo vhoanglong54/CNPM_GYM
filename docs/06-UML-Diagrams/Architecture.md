@@ -71,7 +71,8 @@ flowchart TB
     Users[UsersModule<br/>hồ sơ, hội viên, nhân sự]
     Catalog[CatalogModule<br/>gói Gym và PT]
     Orders[OrdersModule<br/>đơn, payment, receipt]
-    Operations[OperationsModule<br/>slot, booking, review, check-in]
+    Operations[OperationsModule<br/>slot, booking, check-in]
+    Reviews[ReviewsModule<br/>đánh giá PT/Lễ tân]
     Reports[ReportsModule<br/>dashboard, đối soát]
     Notifications[NotificationsModule<br/>thông báo trong ứng dụng]
   end
@@ -85,15 +86,18 @@ flowchart TB
   Pipe --> Catalog
   Pipe --> Orders
   Pipe --> Operations
+  Pipe --> Reviews
   Pipe --> Reports
   Pipe --> Notifications
   Orders --> Notifications
   Operations --> Notifications
+  Reviews --> Notifications
   Auth --> Prisma
   Users --> Prisma
   Catalog --> Prisma
   Orders --> Prisma
   Operations --> Prisma
+  Reviews --> Prisma
   Reports --> Prisma
   Notifications --> Prisma
   Prisma --> Database
@@ -119,7 +123,7 @@ flowchart TB
   Router[React Router / App.tsx]
   Protected[ProtectedRoute]
   RoleRoute[RoleRoute + menu theo role]
-  Pages[Pages<br/>Auth, Dashboard, Packages, Orders,<br/>People, Schedule, Check-in, Reports]
+  Pages[Pages<br/>Auth, Dashboard, Packages, Orders,<br/>People, Schedule, Reviews, Check-in, Reports]
   AuthContext[AuthContext<br/>user + JWT riêng từng tab]
   Axios[Axios client / lib/api.ts]
   API[NestJS API]

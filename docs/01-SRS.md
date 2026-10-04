@@ -2,7 +2,7 @@
 
 ## 1. Phạm vi
 
-Hệ thống phục vụ một cơ sở Gym độc lập dưới dạng Web responsive. Phạm vi gồm xác thực/RBAC, hội viên, gói Gym/PT, Trainer, booking, mock billing/payment có phê duyệt, receipt PDF, check-in QR, đánh giá PT, thông báo và báo cáo vận hành.
+Hệ thống phục vụ một cơ sở Gym độc lập dưới dạng Web responsive. Phạm vi gồm xác thực/RBAC, hội viên, gói Gym/PT, Trainer, booking và yêu cầu hủy muộn, mock billing/payment có phê duyệt, receipt PDF, check-in QR, đánh giá PT/Lễ tân, thông báo và báo cáo vận hành.
 
 Ngoài phạm vi: thanh toán thật, hóa đơn điện tử, kế toán thuế, đa chi nhánh, app native, IoT cổng vào, lớp tập nhóm và hoa hồng PT.
 
@@ -30,9 +30,10 @@ Ngoài phạm vi: thanh toán thật, hóa đơn điện tử, kế toán thuế
 | FR-11 | Owner xem tổng thu chỉ từ payment PAID, hội viên, check-in, booking và gói sắp hết hạn. |
 | FR-12 | UI hiển thị thông báo tiếng Việt tại thao tác và vô hiệu hóa nút khi đang gửi. |
 | FR-13 | Người dùng xem/cập nhật hồ sơ và đổi mật khẩu sau khi xác nhận mật khẩu hiện tại. |
-| FR-14 | Chỉ Member có booking COMPLETED được đánh giá PT một lần; hiển thị điểm trung bình và số lượt đánh giá. |
+| FR-14 | Member được đánh giá mỗi PT/Lễ tân đang làm việc một lần bằng 1–5 sao kèm nhận xét, không phụ thuộc lịch PT; có thể cập nhật đánh giá. Owner xem toàn bộ phản hồi. |
 | FR-15 | Người dùng nhận thông báo trong ứng dụng về thanh toán, lịch PT, đánh giá và nhắc lịch PT trong 24 giờ trước ca. |
 | FR-16 | Owner xem đối soát tiền mặt theo ngày, doanh thu theo người xác nhận, hiệu suất PT và audit log. |
+| FR-17 | Owner lọc nhân sự còn làm/đã nghỉ, sắp xếp nhân sự đang làm theo điểm hoặc số lượt đánh giá và mở chi tiết phản hồi. |
 
 ## 4. Yêu cầu phi chức năng
 
@@ -49,9 +50,8 @@ Ngoài phạm vi: thanh toán thật, hóa đơn điện tử, kế toán thuế
 - QR chứa mã hội viên để Hội viên xuất trình; chỉ Lễ tân/Chủ phòng được quét hoặc nhập mã và xác nhận check-in.
 - Chống check-in lặp theo `idempotencyKey` và theo hội viên/ngày; mỗi lượt ghi rõ gói Gym được áp dụng.
 - Gói Gym theo tháng hiển thị ngày bắt đầu/kết thúc; gói PT hiển thị tổng, đã dùng, đang giữ và còn khả dụng.
-- Lịch PT giữ một buổi từ `PENDING`; `REJECTED`/`CANCELLED` hoàn buổi, `COMPLETED`/`NO_SHOW` trừ một buổi.
-- Hội viên chỉ hủy lịch đã xác nhận trước giờ tập ít nhất 4 giờ; lịch vắng mặt đã xác nhận vẫn trừ buổi.
+- Lịch PT giữ một buổi từ `PENDING`; `CANCEL_REQUESTED` tiếp tục giữ slot/buổi, `REJECTED`/`CANCELLED` hoàn buổi, `COMPLETED`/`NO_SHOW` trừ một buổi.
+- Hội viên hủy lịch đã xác nhận trước ít nhất 4 giờ được hủy ngay; dưới 4 giờ tạo `CANCEL_REQUESTED` để PT/Chủ phòng chấp nhận hoặc từ chối. PT hủy trước giờ bắt đầu có hiệu lực ngay và hoàn buổi.
 - Yêu cầu xác nhận chuyển khoản hết hạn sau 48 giờ; hết hạn phải gửi yêu cầu mới.
 - Gói PT có hạn dùng mặc định 365 ngày sau kích hoạt.
 - Gói Gym đầu tiên kích hoạt khi đơn chuyển PAID; gói gia hạn nối tiếp ngày kết thúc cuối cùng, không chồng thời hạn.
-

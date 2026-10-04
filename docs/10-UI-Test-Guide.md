@@ -161,15 +161,30 @@ Kết quả mong đợi:
 2. Hội viên kiểm tra trạng thái đổi thành **Đã xác nhận**.
 3. PT chọn **Hoàn thành** sau buổi tập.
 4. Hội viên mở **Hồ sơ** và kiểm tra số buổi còn lại giảm một.
-5. Hội viên chọn **Đánh giá**, nhập 1–5 sao và nhận xét tùy chọn; kiểm tra điểm/số lượt của PT trên ca trống.
+5. Kiểm tra điểm/số lượt đánh giá của PT vẫn hiển thị trên ca trống và bấm vào được để mở hồ sơ.
 
-Kết quả mong đợi: trạng thái đi đúng thứ tự `Chờ xác nhận → Đã xác nhận → Hoàn thành`; một lịch không thể hoàn thành hai lần hoặc đánh giá hai lần. PT có thể **Từ chối** kèm lý do; yêu cầu bị từ chối hoàn buổi đang giữ.
-
-Sau khi có lịch `COMPLETED` chưa được đánh giá, trang **Lịch PT** của Hội viên phải hiện thẻ nhắc **Đánh giá ngay**. Biểu mẫu hiển thị 5 nút sao, ô nhận xét và nút gửi; không cần nhập qua hộp thoại của trình duyệt.
+Kết quả mong đợi: trạng thái đi đúng thứ tự `Chờ xác nhận → Đã xác nhận → Hoàn thành`; một lịch không thể hoàn thành hai lần. PT có thể **Từ chối** kèm lý do; yêu cầu bị từ chối hoàn buổi đang giữ.
 
 ### 5.4 Hủy lịch
 
-Tạo một lịch khác rồi hủy từ tài khoản được phép. Kết quả mong đợi là trạng thái **Đã hủy**, lý do được hiển thị và buổi đang giữ được hoàn. Hội viên không thể hủy lịch đã xác nhận khi còn dưới 4 giờ. Sau khi ca kết thúc, PT có thể chọn **Vắng mặt**; trường hợp này vẫn trừ một buổi.
+1. Hủy booking PENDING từ Hội viên: lịch chuyển **Đã hủy**, PT nhận thông báo và buổi đang giữ được hoàn.
+2. Với booking CONFIRMED còn trên 4 giờ, Hội viên hủy trực tiếp: kết quả giống bước 1.
+3. Với booking CONFIRMED còn dưới 4 giờ, Hội viên chọn **Hủy / yêu cầu hủy**, nhập lý do: lịch chuyển **Chờ duyệt hủy**, chưa hoàn buổi và chưa mở lại slot.
+4. Ở tài khoản PT hoặc Owner, mở lịch có yêu cầu rồi thử **Từ chối hủy** kèm lý do: lịch trở lại **Đã xác nhận** và Hội viên nhận thông báo.
+5. Gửi lại yêu cầu và chọn **Chấp nhận hủy**: lịch chuyển **Đã hủy**, hoàn buổi, mở lại slot và thông báo Hội viên.
+6. Tạo lịch khác rồi hủy từ phía PT: hủy có hiệu lực ngay, hoàn buổi và thông báo Hội viên.
+7. Sau khi ca CONFIRMED kết thúc, PT chọn **Vắng mặt**: trạng thái NO_SHOW và vẫn trừ một buổi.
+
+### 5.5 Đánh giá nhân viên và hồ sơ PT
+
+1. Đăng nhập Hội viên, mở **Đánh giá nhân viên**.
+2. Lọc riêng PT/Lễ tân, tìm theo tên và thử các kiểu sắp xếp.
+3. Mở một nhân viên chưa từng tương tác, chọn 1–5 sao, nhập nhận xét từ 3 ký tự và gửi.
+4. Mở lại cùng nhân viên, thay đổi sao/nhận xét và lưu lần nữa.
+5. Vào **Lịch PT**, bấm tên hoặc số sao của PT trên ca trống để mở đúng hồ sơ và danh sách nhận xét.
+6. Đăng nhập Owner, vào **Nhân sự**, lọc **Còn làm việc/Đã nghỉ việc**, chọn sắp xếp theo sao/số bài và mở **Xem đánh giá**.
+
+Kết quả mong đợi: không yêu cầu booking trước đó; lần lưu thứ hai cập nhật bài cũ; điểm trung bình/số bài cập nhật ở danh sách, hồ sơ PT, lịch trống và giao diện Owner. Hội viên không nhìn thấy hoặc đánh giá nhân viên đã nghỉ việc.
 
 ## 6. Luồng check-in
 
@@ -202,12 +217,14 @@ Kết quả mong đợi:
 3. Tại **Nhân sự**, tạo tài khoản Lễ tân/PT và kiểm tra quyền đăng nhập.
 4. Tại **Hội viên**, tìm theo tên/email/mã và thử xóa một tài khoản test không còn dữ liệu liên quan.
 5. Tại **Nhân sự**, chọn **Cho nghỉ việc** trên một tài khoản Lễ tân/PT test; thử gọi lại API hoặc tải trang ở tab của nhân viên đó, sau đó dùng **Khôi phục tài khoản**.
+6. Dùng bộ lọc **Còn làm việc/Đã nghỉ việc/Tất cả**; chọn sắp xếp theo điểm và số bài đánh giá rồi mở chi tiết phản hồi.
 
 Kết quả mong đợi:
 
 - Chỉ Chủ phòng thấy thao tác tạo gói, tạo nhân sự và xóa hội viên.
 - Tài khoản có giao dịch/lịch sử liên quan được bảo vệ theo ràng buộc dữ liệu; thông báo lỗi phải rõ ràng.
 - Cho nghỉ việc chuyển tài khoản nhân viên sang `INACTIVE`, chặn cả JWT cũ và đăng nhập mới nhưng không xóa lịch sử giao dịch/lịch PT.
+- Sắp xếp theo đánh giá tự chuyển về danh sách nhân viên còn làm; phản hồi cũ vẫn được Owner xem sau khi nhân viên nghỉ việc.
 - Không xóa các tài khoản mẫu nếu còn cần dùng cho phần test khác.
 
 ### Lễ tân, PT và Hội viên

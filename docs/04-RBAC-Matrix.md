@@ -13,8 +13,9 @@
 | Chuyển khoản demo | — | — | — | Đơn của mình |
 | Xem receipt | Tất cả đơn PAID | Tất cả đơn PAID | — | Đơn PAID của mình |
 | Mở slot PT | — | — | ✓ | — |
-| Xử lý booking | Xem/xử lý | — | Slot của mình | Đặt/hủy của mình |
-| Đánh giá PT | — | — | Xem điểm của mình | Booking đã hoàn thành của mình |
+| Xử lý booking | Xem/xử lý, duyệt hủy muộn | — | Slot của mình, duyệt hủy muộn | Đặt/hủy/yêu cầu hủy của mình |
+| Xem đánh giá nhân viên | Tất cả PT/Lễ tân | — | Điểm của mình | Nhân viên đang làm việc |
+| Tạo/cập nhật đánh giá | — | — | — | Một bài cho mỗi PT/Lễ tân ACTIVE |
 | Báo cáo/đối soát/audit | ✓ | — | — | — |
 | Thông báo | Của mình | Của mình | Của mình | Của mình |
 | Check-in | Quét/nhập mã và xác nhận | Quét/nhập mã và xác nhận | — | Hiển thị QR cá nhân và xem lịch sử |

@@ -17,7 +17,6 @@
 | BR-22 | Báo cáo tổng thu chỉ lấy Payment `PAID`. | Bảo đảm bởi query |
 | BR-23 | Owner chỉ được xóa cứng hội viên chưa có giao dịch/lịch sử sử dụng; tài khoản đã có lịch sử phải chuyển sang `INACTIVE`. | `MEMBER_HAS_HISTORY` |
 | BR-24 | Payment, booking, completion, check-in dùng DB transaction. | Rollback toàn bộ |
-| BR-25 | Hội viên hủy lịch CONFIRMED trước ít nhất 4 giờ; NO_SHOW sau khi slot kết thúc vẫn trừ một buổi. | `BOOKING_CANCELLATION_CUTOFF`, `BOOKING_NOT_ENDED` |
-| BR-26 | Chỉ chủ booking COMPLETED đánh giá 1–5 sao, mỗi booking một lần. | `REVIEW_BOOKING_NOT_COMPLETED`, `REVIEW_ALREADY_EXISTS` |
+| BR-25 | Hội viên hủy CONFIRMED trước ít nhất 4 giờ được hủy ngay; dưới 4 giờ chuyển `CANCEL_REQUESTED`, tiếp tục giữ lượt/slot và chờ PT hoặc Owner duyệt. PT hủy trước giờ bắt đầu có hiệu lực ngay. | `BOOKING_CANCELLATION_APPROVAL_REQUIRED`, `BOOKING_REASON_REQUIRED` |
+| BR-26 | Mỗi Member được đánh giá một lần cho mỗi Receptionist/Trainer ACTIVE bằng 1–5 sao và nhận xét 3–1000 ký tự; lưu lần sau cập nhật bài cũ, không yêu cầu booking. | `STAFF_NOT_REVIEWABLE`, `MEMBER_PROFILE_REQUIRED` |
 | BR-27 | Check-in theo ngày và mọi thời gian hiển thị dùng `Asia/Ho_Chi_Minh`. | Bảo đảm bởi date-time helper |
-

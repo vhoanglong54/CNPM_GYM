@@ -53,7 +53,7 @@ flowchart LR
   BOOKING -->|11. Thông báo kết quả| M
 ```
 
-Khi hoàn thành hoặc vắng mặt, buổi đang giữ chuyển thành đã dùng. Khi từ chối hoặc hủy hợp lệ, buổi đang giữ được hoàn lại.
+Khi hoàn thành hoặc vắng mặt, buổi đang giữ chuyển thành đã dùng. Khi từ chối hoặc hủy hợp lệ, buổi đang giữ được hoàn lại. Hủy muộn từ Hội viên giữ nguyên lịch và buổi cho đến khi PT/Chủ phòng chấp nhận; nếu từ chối, lịch quay lại Đã xác nhận.
 Chủ phòng có thể hỗ trợ xử lý lịch; chỉ PT mở khung giờ của chính mình.
 
 ## 3. Check-in QR
@@ -78,7 +78,30 @@ flowchart LR
 
 Nếu Hội viên đã check-in trong ngày, lịch sử không tạo thêm bản ghi và không trừ thêm lượt; Lễ tân vẫn có thể cho Hội viên vào.
 
-## 4. Vai trò trong hệ thống
+## 4. Đánh giá nhân viên
+
+```mermaid
+flowchart LR
+  M([Hội viên])
+  UI[Giao diện đánh giá]
+  STAFF[Hồ sơ PT/Lễ tân]
+  REVIEW[Điểm và bài đánh giá]
+  NOTICE[Thông báo]
+  O([Chủ phòng])
+
+  M -->|1. Chọn nhân viên| UI
+  UI -->|2. Mở hồ sơ| STAFF
+  M -->|3. Gửi sao và nhận xét| UI
+  UI -->|4. Tạo hoặc cập nhật| REVIEW
+  REVIEW -->|5. Cập nhật điểm| STAFF
+  REVIEW -->|6. Báo đánh giá mới| NOTICE
+  NOTICE -->|7. Gửi tới nhân viên| STAFF
+  O -->|8. Xem phản hồi tại Nhân sự| REVIEW
+```
+
+Không cần có lịch PT trước đó. Mỗi Hội viên chỉ có một bài cho mỗi nhân viên và được cập nhật bài của chính mình.
+
+## 5. Vai trò trong hệ thống
 
 ```mermaid
 flowchart TB

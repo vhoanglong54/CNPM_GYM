@@ -24,14 +24,17 @@
 | TC-20 | Yêu cầu chuyển khoản quá 48 giờ | EXPIRED, không thể duyệt và không cấp quyền lợi. |
 | TC-21 | Hai lịch khác nhau trùng giờ của cùng Hội viên | 409 `MEMBER_BOOKING_OVERLAP`. |
 | TC-22 | Đặt/hủy/hoàn thành PT | Reserved tăng khi đặt, giảm khi hủy; COMPLETED tăng used và giảm reserved. |
-| TC-23 | Hội viên hủy lịch CONFIRMED dưới 4 giờ | 409 `BOOKING_CANCELLATION_CUTOFF`. |
+| TC-23 | Hội viên hủy lịch CONFIRMED dưới 4 giờ | Chuyển `CANCEL_REQUESTED`, tiếp tục giữ slot/buổi và thông báo PT/Owner. Chấp nhận mới chuyển CANCELLED và hoàn buổi; từ chối quay về CONFIRMED. |
 | TC-24 | PT đánh dấu NO_SHOW sau giờ kết thúc | Trừ một buổi, trạng thái NO_SHOW. |
-| TC-25 | Đánh giá trước hoàn thành hoặc đánh giá lần hai | Bị từ chối; chỉ một review 1–5/booking COMPLETED. |
+| TC-25 | Member đánh giá PT/Lễ tân chưa từng tương tác | Thành công nếu nhân viên ACTIVE; lưu 1–5 sao và comment, cập nhật điểm tổng hợp. |
 | TC-26 | Check-in quanh 00:00 Việt Nam trên server UTC | Phân ngày theo `Asia/Ho_Chi_Minh`. |
 | TC-27 | Hội viên quay lại sau khi đã check-in trong ngày | 409 `CHECKIN_ALREADY_TODAY`; không tạo bản ghi/trừ lượt lần hai, Lễ tân vẫn có thể cho khách qua. |
 | TC-28 | Chủ phòng cho Lễ tân/PT nghỉ việc | User chuyển `INACTIVE`, lịch sử được giữ; đăng nhập mới và JWT cũ đều bị từ chối. |
 | TC-29 | Hai tab đăng nhập hai tài khoản khác nhau rồi tải lại | Mỗi tab vẫn giữ đúng tài khoản của mình, không lấy phiên từ tab còn lại. |
 | TC-30 | Thanh toán hoặc đổi trạng thái lịch khi một request tải dữ liệu cũ đang chạy | Giao diện cập nhật ngay; response cũ không ghi đè kết quả thao tác, tab khác đồng bộ trong chu kỳ kế tiếp. |
-| TC-31 | Hội viên hoàn thành buổi PT chưa đánh giá | Hiện nhắc đánh giá và biểu mẫu 1–5 sao; gửi thành công không cần tải lại trang. |
+| TC-31 | Member đánh giá lại cùng nhân viên | Cập nhật bài cũ theo unique Member–Staff, không tạo bài thứ hai. |
+| TC-32 | Member đánh giá nhân viên INACTIVE hoặc tài khoản không phải PT/Lễ tân | Bị từ chối `STAFF_NOT_REVIEWABLE`. |
+| TC-33 | Owner lọc nhân sự | Lọc đúng Còn làm/Đã nghỉ; sắp xếp theo sao/số bài chỉ áp dụng danh sách đang làm và mở được chi tiết phản hồi. |
+| TC-34 | Member bấm tên/sao PT trên lịch trống | Mở đúng hồ sơ PT, tổng điểm và danh sách bài đánh giá; quay lại vẫn có thể chọn lịch. |
 
-Automated hiện kiểm tra health/controller cơ bản, ranh giới ngày `Asia/Ho_Chi_Minh` và việc JWT cũ bị chặn sau khi tài khoản nghỉ việc; toàn bộ TC nghiệp vụ trên cần được chạy lại với database test hoặc theo `docs/10-UI-Test-Guide.md` sau mỗi migration/deploy.
+Automated hiện kiểm tra health/controller cơ bản, ranh giới ngày `Asia/Ho_Chi_Minh`, JWT cũ bị chặn sau khi tài khoản nghỉ việc, yêu cầu hủy muộn và đánh giá nhân viên; toàn bộ TC nghiệp vụ trên cần được chạy lại với database test hoặc theo `docs/10-UI-Test-Guide.md` sau mỗi migration/deploy.

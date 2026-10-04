@@ -1,6 +1,6 @@
 # Titan Gym Management System
 
-Responsive Web App quản lý một phòng Gym với 4 vai trò (Chủ phòng, Lễ tân, Huấn luyện viên, Hội viên), OTP email, RBAC, gói Gym theo thời hạn, gói PT theo buổi, lịch trống/đánh giá PT, QR check-in, thanh toán mô phỏng có nhân viên phê duyệt, phiếu thu PDF, thông báo và báo cáo đối soát.
+Responsive Web App quản lý một phòng Gym với 4 vai trò (Chủ phòng, Lễ tân, Huấn luyện viên, Hội viên), OTP email, RBAC, gói Gym theo thời hạn, gói PT theo buổi, lịch PT và yêu cầu hủy muộn, đánh giá PT/Lễ tân, QR check-in, thanh toán mô phỏng có nhân viên phê duyệt, phiếu thu PDF, thông báo và báo cáo đối soát.
 
 > Toàn bộ thanh toán trong hệ thống là **MÔ PHỎNG**, không kết nối ngân hàng và không có giá trị thanh toán hoặc thuế.
 
@@ -90,7 +90,8 @@ Development mặc định dùng OTP dự phòng `123456`. Để gửi Gmail th�
 - Gói Gym thống nhất theo thời hạn: **1 tháng (30 ngày), 2 tháng (60 ngày), 3 tháng (90 ngày)**.
 - Thời hạn tính liên tục từ lúc kích hoạt. Nếu gia hạn khi gói cũ còn hiệu lực, gói mới bắt đầu sau thời điểm kết thúc cuối cùng nên không bị chồng ngày.
 - Check-in ghi nhận ngày đến tập và gắn rõ với gói Gym được Lễ tân/Chủ phòng chọn; mỗi hội viên chỉ được ghi nhận một lần trong ngày.
-- Gói PT tính theo số buổi. Booking giữ một buổi ngay từ lúc `PENDING`; **Hoàn thành** hoặc **Vắng mặt** chuyển buổi đang giữ thành đã dùng, còn **Từ chối/Hủy** hoàn lại buổi đang giữ.
+- Gói PT tính theo số buổi. Booking giữ một buổi ngay từ lúc `PENDING`; **Hoàn thành** hoặc **Vắng mặt** chuyển buổi đang giữ thành đã dùng, còn **Từ chối/Hủy** hoàn lại buổi đang giữ. Hội viên hủy lịch đã xác nhận dưới 4 giờ sẽ tạo yêu cầu để PT/Chủ phòng duyệt.
+- Mỗi Hội viên được tạo một đánh giá 1–5 sao kèm nhận xét cho mỗi PT hoặc Lễ tân đang làm việc và có thể cập nhật đánh giá đó.
 
 ## Ý nghĩa các lệnh
 

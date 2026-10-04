@@ -87,7 +87,7 @@ sequenceDiagram
     alt Buổi tập hoàn thành
       T->>UI: Đánh dấu Hoàn thành
       UI->>SYS: Ghi nhận đã dùng một buổi
-      SYS-->>M: Cho phép đánh giá PT
+      SYS-->>M: Thông báo buổi tập đã hoàn thành
     else Hội viên vắng mặt
       T->>UI: Đánh dấu Vắng mặt
       UI->>SYS: Ghi nhận đã dùng một buổi
@@ -99,14 +99,27 @@ sequenceDiagram
     SYS-->>M: Thông báo kết quả
   end
 
-  opt Hội viên/PT/Chủ phòng hủy lịch hợp lệ
-    Note over M,T: Người có quyền thực hiện hủy trên giao diện
-    UI->>SYS: Hủy lịch và hoàn lại buổi đang giữ
-    SYS-->>M: Thông báo lịch đã hủy
+  alt Hủy sớm hoặc PT hủy
+    M->>UI: Hủy trước ít nhất 4 giờ
+    UI->>SYS: Hủy và hoàn buổi
+    SYS-->>T: Thông báo lịch đã hủy
+  else Hội viên hủy dưới 4 giờ
+    M->>UI: Gửi lý do hủy muộn
+    UI->>SYS: Chuyển sang Chờ duyệt hủy
+    SYS-->>T: Thông báo yêu cầu hủy
+    alt PT/Chủ phòng chấp nhận
+      T->>UI: Chấp nhận hủy
+      UI->>SYS: Hủy lịch và hoàn buổi
+      SYS-->>M: Thông báo đã hủy
+    else Từ chối
+      T->>UI: Từ chối kèm lý do
+      UI->>SYS: Đưa lịch về Đã xác nhận
+      SYS-->>M: Thông báo lý do
+    end
   end
 ```
 
-Lịch `PENDING` hoặc `CONFIRMED` giữ một buổi. `COMPLETED` và `NO_SHOW` dùng một buổi; `REJECTED` và `CANCELLED` hoàn lại buổi.
+Lịch `PENDING`, `CONFIRMED` hoặc `CANCEL_REQUESTED` giữ một buổi. `COMPLETED` và `NO_SHOW` dùng một buổi; `REJECTED` và `CANCELLED` hoàn lại buổi.
 Chủ phòng có thể hỗ trợ xử lý lịch, nhưng chỉ PT mở khung giờ của chính mình.
 
 ## 4. Check-in bằng QR
@@ -136,3 +149,27 @@ sequenceDiagram
 ```
 
 Hội viên chỉ hiển thị QR; quyền ghi nhận check-in thuộc Lễ tân hoặc Chủ phòng.
+
+## 5. Đánh giá nhân viên
+
+```mermaid
+sequenceDiagram
+  actor M as Hội viên
+  actor S as PT/Lễ tân
+  actor O as Chủ phòng
+  participant UI as Giao diện Titan Gym
+  participant SYS as Hệ thống
+
+  M->>UI: Mở Đánh giá nhân viên
+  UI->>SYS: Lấy danh sách và điểm đánh giá
+  SYS-->>UI: Trả PT/Lễ tân đang làm việc
+  M->>UI: Mở hồ sơ, chọn sao và nhập nhận xét
+  UI->>SYS: Tạo hoặc cập nhật đánh giá
+  SYS-->>S: Thông báo có đánh giá
+  SYS-->>UI: Cập nhật điểm và bài đánh giá
+  O->>UI: Mở Nhân sự và xem phản hồi
+  UI->>SYS: Lấy chi tiết đánh giá
+  SYS-->>O: Trả điểm và danh sách nhận xét
+```
+
+Mỗi Hội viên có một bài trên mỗi nhân viên và có thể cập nhật; không yêu cầu từng đặt lịch PT với người được đánh giá.

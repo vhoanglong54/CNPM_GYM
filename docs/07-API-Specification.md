@@ -51,17 +51,24 @@ Trừ các endpoint Public, request phải có `Authorization: Bearer <JWT>`. M�
 | PATCH | `/orders/:id/cancel` | Owner/Receptionist hoặc Member sở hữu Order PENDING. |
 | GET | `/orders/:id/receipt` | Owner/Receptionist hoặc Member sở hữu Order PAID; trả trực tiếp `application/pdf`. |
 
-## Slot, booking và review PT
+## Slot và booking PT
 
 | Method | Path | Quyền và phạm vi |
 |---|---|---|
 | GET | `/operations/slots` | Authenticated; hỗ trợ `from`, `to`, `sort=SOONEST\|RATING\|REVIEW_COUNT`. |
 | POST | `/operations/slots` | Trainer có `trainerProfileId`; tạo slot của chính mình. |
-| PATCH | `/operations/slots/:id/close` | Trainer sở hữu hoặc Owner; slot không có booking PENDING/CONFIRMED. |
+| PATCH | `/operations/slots/:id/close` | Trainer sở hữu hoặc Owner; slot không có booking PENDING/CONFIRMED/CANCEL_REQUESTED. |
 | GET | `/operations/bookings` | Owner xem tất cả; Trainer xem lịch của mình; Member xem lịch của mình. |
 | POST | `/operations/bookings` | Member; chọn slot và `memberPtPackageId`. |
-| PATCH | `/operations/bookings/:id/status` | Trainer sở hữu/Owner xử lý; Member chỉ hủy lịch của mình theo cutoff. |
-| POST | `/operations/bookings/:id/review` | Member sở hữu booking COMPLETED; một review/booking. |
+| PATCH | `/operations/bookings/:id/status` | Trainer sở hữu/Owner xử lý; Member hủy sớm trực tiếp, hủy CONFIRMED dưới 4 giờ tạo `CANCEL_REQUESTED`. PT/Owner gửi `CANCELLED` để chấp nhận hoặc `CONFIRMED` kèm lý do để từ chối yêu cầu hủy. |
+
+## Đánh giá nhân viên
+
+| Method | Path | Quyền và phạm vi |
+|---|---|---|
+| GET | `/reviews/staff` | Owner xem PT/Lễ tân mọi trạng thái; Member chỉ xem nhân viên ACTIVE. Trả điểm trung bình và số bài. |
+| GET | `/reviews/staff/:staffId` | Owner hoặc Member; trả hồ sơ, tổng điểm, bài đánh giá và bài của Member hiện tại nếu có. |
+| POST | `/reviews/staff/:staffId` | Member; tạo hoặc cập nhật một bài 1–5 sao, nhận xét 3–1000 ký tự cho PT/Lễ tân ACTIVE; không yêu cầu booking. |
 
 ## Check-in
 
