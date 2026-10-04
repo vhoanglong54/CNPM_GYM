@@ -171,12 +171,13 @@ Kết quả mong đợi:
 
 1. PT chọn **Xác nhận** cho yêu cầu đang chờ.
 2. Hội viên kiểm tra trạng thái đổi thành **Đã xác nhận**.
-3. Trước giờ PT, Lễ tân quét QR và xác nhận check-in Gym cho Hội viên.
-4. Trên giao diện PT, kiểm tra dòng **Hội viên đã check-in** và nút **Hoàn thành** được mở sau giờ bắt đầu.
-5. Tạo một lịch khác không có check-in trước giờ; kiểm tra nút **Hoàn thành** bị khóa.
+3. Trong khoảng 60 phút trước giờ bắt đầu đến 5 phút sau giờ kết thúc, Lễ tân quét QR và xác nhận tại quầy.
+4. Nếu Hội viên đã check-in Gym từ trước trong ngày, quét lại và chọn **Xác nhận điểm danh lịch PT**; hệ thống không tạo thêm lượt Gym.
+5. Sau giờ kết thúc và hết 5 phút đệm, mở lại **Lịch PT**: booking phải chuyển **Chờ PT xác nhận hoàn thành**.
 6. PT chọn **Hoàn thành**, sau đó Hội viên mở **Hồ sơ** và kiểm tra số buổi còn lại giảm một.
+7. Tạo lịch khác, không quét trong cửa sổ điểm danh và chờ hết thời gian đệm: hệ thống tự chuyển **Vắng mặt**, trừ một buổi và gửi thông báo.
 
-Kết quả mong đợi: trạng thái đi đúng thứ tự `Chờ xác nhận → Đã xác nhận → Hoàn thành`; check-in sau giờ bắt đầu không đủ điều kiện cho lịch đó; một lịch không thể hoàn thành hai lần.
+Kết quả mong đợi: luồng có mặt đi `Chờ xác nhận → Đã xác nhận → Chờ PT xác nhận hoàn thành → Hoàn thành`; luồng không điểm danh tự đi đến `Vắng mặt`. Không có xác nhận ngoại lệ và một lịch chỉ bị trừ đúng một buổi.
 
 ### 5.4 Hủy lịch
 
@@ -186,7 +187,7 @@ Kết quả mong đợi: trạng thái đi đúng thứ tự `Chờ xác nhận 
 4. Ở tài khoản PT hoặc Owner, mở lịch có yêu cầu rồi thử **Từ chối hủy** kèm lý do: lịch trở lại **Đã xác nhận** và Hội viên nhận thông báo.
 5. Gửi lại yêu cầu và chọn **Chấp nhận hủy**: lịch chuyển **Đã hủy**, hoàn buổi, mở lại slot và thông báo Hội viên.
 6. Tạo lịch khác rồi hủy từ phía PT: hủy có hiệu lực ngay, hoàn buổi và thông báo Hội viên.
-7. Sau khi ca CONFIRMED kết thúc, PT chọn **Vắng mặt**: trạng thái NO_SHOW và vẫn trừ một buổi.
+7. Xác nhận không thể hủy lịch sau giờ bắt đầu; việc có mặt/vắng mặt được hệ thống đối soát sau giờ kết thúc + 5 phút.
 
 ### 5.5 Đánh giá nhân viên và hồ sơ PT
 
@@ -209,7 +210,7 @@ Kết quả mong đợi: không yêu cầu booking trước đó; lần lưu th�
 6. Chọn gói cần áp dụng nếu hội viên có nhiều quyền lợi, sau đó chọn **Xác nhận check-in**.
 7. Kiểm tra thẻ kết quả **Check-in thành công** và khối **Lịch PT hôm nay**; nếu có lịch phải hiện đúng giờ, tên PT và trạng thái.
 8. Kiểm tra bản ghi mới trong lịch sử của cả Lễ tân và Hội viên.
-9. Xác nhận lại cùng hội viên trong ngày: giao diện phải hiện **Đã check-in hôm nay**, không hiện toast lỗi đỏ và vẫn hiện lịch PT.
+9. Xác nhận lại cùng hội viên trong ngày: giao diện phải hiện **Đã check-in hôm nay**, không hiện toast lỗi đỏ và vẫn hiện lịch PT. Nếu đang trong cửa sổ PT, nút đổi thành **Xác nhận điểm danh lịch PT**.
 10. Thử thêm mã không tồn tại hoặc hội viên chưa từng check-in và không có gói Gym hiệu lực.
 
 Trên thiết bị tại quầy, mở [https://titan-gym-web.vercel.app/checkin](https://titan-gym-web.vercel.app/checkin) bằng Chrome/Edge độc lập, cho phép quyền camera rồi quét QR đang hiển thị trên điện thoại Hội viên. Nếu camera vẫn không mở hoặc thiết bị không có camera, nhập `MB-000101` vào ô mã hội viên rồi xác nhận. Khi kiểm thử local bằng IP LAN qua HTTP, trình duyệt có thể chặn camera; dùng `http://localhost:5173/checkin` ngay trên máy chủ hoặc nhập mã thủ công. Không cần camera để kiểm tra phần còn lại của quy trình.
@@ -220,9 +221,9 @@ Kết quả mong đợi:
 - Lượt check-in gắn đúng với gói đã hiển thị ở bước xác nhận; gói thời hạn giữ nguyên ngày hết hạn.
 - Mã sai hoặc không có quyền lợi hợp lệ bị từ chối rõ ràng.
 - Mỗi hội viên chỉ được ghi nhận một lần trong cùng ngày, tránh tăng sai số ngày tập hoặc trừ nhiều lượt.
-- Nếu Hội viên quay lại trong ngày, giao diện báo đã check-in; Lễ tân có thể cho khách qua nhưng hệ thống không tạo bản ghi hoặc trừ lượt lần hai.
+- Nếu Hội viên quay lại trong ngày, giao diện báo đã check-in; hệ thống không tạo/trừ lượt Gym lần hai nhưng vẫn ghi điểm danh booking PT khi xác nhận đúng cửa sổ.
 - Chỉ khi có lịch PT hoạt động trong ngày, khối nhắc mới xuất hiện ngay sau khi quét/tra cứu; không có lịch thì không hiện khối rỗng.
-- Check-in Gym không tự hoàn thành booking, nhưng phải diễn ra không muộn hơn giờ bắt đầu để PT có thể xác nhận **Hoàn thành**.
+- Điểm danh PT hợp lệ từ 60 phút trước giờ bắt đầu đến 5 phút sau giờ kết thúc. Điểm danh không tự hoàn thành booking; sau thời gian đệm PT mới nhận trạng thái chờ xác nhận.
 - Hội viên chỉ hiển thị QR và lịch sử của mình; chỉ Lễ tân/Chủ phòng có quyền ghi nhận check-in.
 
 ## 7. Quản lý gói, hội viên và nhân sự

@@ -11,7 +11,7 @@
 | BR-09–10 | Gói Gym phải trong hạn, không paused; check-in ghi rõ gói áp dụng và chỉ tạo một bản ghi/Hội viên/ngày. Quét lại trả kết quả đã check-in bình thường, không trừ thêm quyền lợi. | `MEMBERSHIP_INELIGIBLE` |
 | BR-11 | `checkins.idempotency_key` UNIQUE; gửi lại cùng yêu cầu trả kết quả cũ, cùng khóa cho Hội viên khác bị từ chối. | `CHECKIN_IDEMPOTENCY_CONFLICT` |
 | BR-12–14 | Slot tương lai, mở, không bị giữ; Hội viên không trùng lịch; gói PT còn `total-used-reserved`. Trainer/Owner chỉ đóng slot chưa có booking hoạt động. | `BOOKING_SLOT_*`, `MEMBER_BOOKING_OVERLAP`, `PT_SESSIONS_EXHAUSTED` |
-| BR-15–16 | Chỉ PT sở hữu/Owner xử lý; từ chối/hủy hoàn lượt giữ, hoàn thành/vắng mặt tiêu thụ lượt giữ. `COMPLETED` yêu cầu check-in Gym cùng ngày, không muộn hơn giờ bắt đầu; `NO_SHOW` chỉ sau giờ kết thúc. | `BOOKING_STATE_INVALID`, `PT_COMPLETION_CHECKIN_REQUIRED`, `PT_RESERVATION_INCONSISTENT` |
+| BR-15–16 | Điểm danh PT chỉ hợp lệ từ 60 phút trước giờ bắt đầu đến 5 phút sau giờ kết thúc. Hết hạn: có điểm danh → `AWAITING_COMPLETION`; không có → tự động `NO_SHOW`. PT chỉ chuyển `AWAITING_COMPLETION` sang `COMPLETED`; cả hai kết quả cuối đều tiêu thụ lượt giữ. | `BOOKING_STATE_INVALID`, `PT_COMPLETION_CHECKIN_REQUIRED`, `PT_RESERVATION_INCONSISTENT` |
 | BR-17–20 | Chỉ đơn PENDING hợp lệ được xử lý; PAID không xử lý lại; receipt cần Payment PAID và tài khoản xác nhận. | `ORDER_ALREADY_PAID`, `RECEIPT_CONFIRMATION_MISSING` |
 | BR-21 | OrderItem giữ giá/tên tại thời điểm mua. | Bảo đảm bởi schema/service |
 | BR-22 | Báo cáo tổng thu chỉ lấy Payment `PAID`. | Bảo đảm bởi query |

@@ -57,10 +57,10 @@ Trừ các endpoint Public, request phải có `Authorization: Bearer <JWT>`. M�
 |---|---|---|
 | GET | `/operations/slots` | Authenticated; hỗ trợ `from`, `to`, `sort=SOONEST\|RATING\|REVIEW_COUNT`. |
 | POST | `/operations/slots` | Trainer có `trainerProfileId`; tạo slot của chính mình. |
-| PATCH | `/operations/slots/:id/close` | Trainer sở hữu hoặc Owner; slot không có booking PENDING/CONFIRMED/CANCEL_REQUESTED. |
-| GET | `/operations/bookings` | Owner xem tất cả; Trainer xem lịch của mình; Member xem lịch của mình. Booking `CONFIRMED` trả `completionCheckinAt` nếu có check-in Gym cùng ngày và không muộn hơn giờ bắt đầu. |
+| PATCH | `/operations/slots/:id/close` | Trainer sở hữu hoặc Owner; slot không có booking PENDING/CONFIRMED/CANCEL_REQUESTED/AWAITING_COMPLETION. |
+| GET | `/operations/bookings` | Owner xem tất cả; Trainer xem lịch của mình; Member xem lịch của mình. Đồng thời đối soát booking CONFIRMED đã quá giờ kết thúc + 5 phút: có điểm danh chuyển `AWAITING_COMPLETION`, không có chuyển `NO_SHOW`. |
 | POST | `/operations/bookings` | Member; chọn slot và `memberPtPackageId`. |
-| PATCH | `/operations/bookings/:id/status` | Trainer sở hữu/Owner xử lý; Member hủy sớm trực tiếp, hủy CONFIRMED dưới 4 giờ tạo `CANCEL_REQUESTED`. `COMPLETED` bị từ chối với `PT_COMPLETION_CHECKIN_REQUIRED` nếu Hội viên không check-in Gym trước hoặc đúng giờ bắt đầu. |
+| PATCH | `/operations/bookings/:id/status` | Trainer sở hữu/Owner xử lý; Member hủy sớm trực tiếp, hủy CONFIRMED dưới 4 giờ tạo `CANCEL_REQUESTED`. Chỉ booking `AWAITING_COMPLETION` có điểm danh PT hợp lệ mới chuyển `COMPLETED`. |
 
 ## Đánh giá nhân viên
 
@@ -75,10 +75,10 @@ Trừ các endpoint Public, request phải có `Authorization: Bearer <JWT>`. M�
 | Method | Path | Quyền và phạm vi |
 |---|---|---|
 | GET | `/operations/checkins/eligibility/:memberCode` | Owner, Receptionist; trả `alreadyCheckedIn`, `eligibleForGymCheckin`, gói Gym có thể áp dụng và `todayPtAppointments` ngay khi quét. Nếu không có gói Gym, endpoint vẫn trả lịch PT để Lễ tân nhận biết nhưng không cho xác nhận check-in Gym. |
-| POST | `/operations/checkins` | Owner, Receptionist; cần `memberCode`, `idempotencyKey`, có thể chọn `memberMembershipId`. Trả `alreadyCheckedIn`, `replayed` và `todayPtAppointments`. Lần quét lại cùng ngày vẫn thành công nhưng không ghi/trừ thêm. |
+| POST | `/operations/checkins` | Owner, Receptionist; cần `memberCode`, `idempotencyKey`, có thể chọn `memberMembershipId`. Lần quét lại không ghi/trừ thêm lượt Gym nhưng vẫn ghi `attendanceCheckedInAt` cho booking PT nếu thời điểm nằm trong cửa sổ từ -60 đến +5 phút. |
 | GET | `/operations/checkins` | Member xem của mình; Owner/Receptionist xem tối đa 100 lượt gần nhất. |
 
-`todayPtAppointments` chỉ liệt kê booking trong ngày có trạng thái `PENDING`, `CONFIRMED` hoặc `CANCEL_REQUESTED`, kèm giờ bắt đầu/kết thúc và tên PT. Endpoint check-in không cập nhật booking PT.
+`todayPtAppointments` liệt kê booking hoạt động trong ngày, kèm giờ, tên PT và thời điểm điểm danh nếu đã có. Endpoint check-in không hoàn thành booking; nó chỉ lưu bằng chứng điểm danh PT để đối soát sau thời gian đệm.
 
 Lưu ý phản ánh đúng implementation hiện tại: `GET /operations/checkins` mới chỉ có JWT guard ở controller. Frontend không cấp trang Check-in cho Trainer, nhưng service hiện dùng nhánh danh sách chung cho tài khoản không có `memberProfileId`; vì vậy Trainer gọi API trực tiếp vẫn có thể nhận danh sách chung. Đây là sai lệch RBAC cần sửa ở mã nguồn nếu yêu cầu bảo mật là Trainer không được xem check-in.
 

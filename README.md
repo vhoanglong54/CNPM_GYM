@@ -89,8 +89,8 @@ Development mặc định dùng OTP dự phòng `123456`. Để gửi Gmail th�
 
 - Gói Gym thống nhất theo thời hạn: **1 tháng (30 ngày), 2 tháng (60 ngày), 3 tháng (90 ngày)**.
 - Thời hạn tính liên tục từ lúc kích hoạt. Nếu gia hạn khi gói cũ còn hiệu lực, gói mới bắt đầu sau thời điểm kết thúc cuối cùng nên không bị chồng ngày.
-- Check-in ghi nhận ngày đến tập và gắn rõ với gói Gym; mỗi Hội viên chỉ có một bản ghi/ngày. Quét QR hiện nhắc ngay nếu hôm nay có lịch PT; check-in không tự đổi booking nhưng phải có trước hoặc đúng giờ bắt đầu để PT xác nhận hoàn thành.
-- Gói PT tính theo số buổi. Booking giữ một buổi ngay từ lúc `PENDING`; **Hoàn thành** hoặc **Vắng mặt** chuyển buổi đang giữ thành đã dùng, còn **Từ chối/Hủy** hoàn lại buổi đang giữ. Hội viên hủy lịch đã xác nhận dưới 4 giờ sẽ tạo yêu cầu để PT/Chủ phòng duyệt.
+- Check-in Gym vẫn chỉ có một bản ghi/Hội viên/ngày. Mỗi lần quét/xác nhận tại quầy trong khoảng 60 phút trước giờ PT đến 5 phút sau giờ kết thúc sẽ đồng thời ghi điểm danh cho buổi PT, kể cả Hội viên đã check-in Gym trước đó trong ngày.
+- Gói PT tính theo số buổi. Booking giữ một buổi ngay từ `PENDING`; hết thời gian đệm, buổi có điểm danh chuyển `AWAITING_COMPLETION` để PT xác nhận, buổi không có điểm danh tự chuyển `NO_SHOW` và bị trừ một buổi. **Từ chối/Hủy** hợp lệ hoàn lại buổi đang giữ.
 - Mỗi Hội viên được tạo một đánh giá 1–5 sao kèm nhận xét cho mỗi PT hoặc Lễ tân đang làm việc và có thể cập nhật đánh giá đó.
 
 ## Ý nghĩa các lệnh

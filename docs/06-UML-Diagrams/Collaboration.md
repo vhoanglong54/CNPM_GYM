@@ -50,12 +50,13 @@ flowchart LR
   BOOKING -->|7. Báo yêu cầu mới| NOTICE
   NOTICE -->|8. Gửi đến PT| T
   T -->|9. Xác nhận hoặc từ chối| UI
-  UI -->|10. Khi hoàn thành: kiểm tra check-in trước giờ PT| CHECKIN
-  CHECKIN -->|11. Đủ điều kiện| BOOKING
-  BOOKING -->|12. Cập nhật buổi và thông báo| M
+  UI -->|10. Quét trong cửa sổ -60 đến +5 phút| CHECKIN
+  CHECKIN -->|11. Ghi điểm danh PT| BOOKING
+  BOOKING -->|12a. Có điểm danh: chờ PT hoàn thành| T
+  BOOKING -->|12b. Không điểm danh: tự động vắng mặt| M
 ```
 
-Hoàn thành yêu cầu Hội viên check-in Gym cùng ngày và không muộn hơn giờ bắt đầu. Hoàn thành hoặc vắng mặt chuyển buổi đang giữ thành đã dùng; từ chối/hủy hợp lệ hoàn lại buổi.
+Hết 5 phút đệm, buổi có điểm danh chuyển sang chờ PT xác nhận hoàn thành; buổi không có điểm danh tự chuyển vắng mặt. Cả hoàn thành và vắng mặt đều chuyển buổi đang giữ thành đã dùng.
 Chủ phòng có thể hỗ trợ xử lý lịch; chỉ PT mở khung giờ của chính mình.
 
 ## 3. Check-in QR
@@ -78,11 +79,11 @@ flowchart LR
   PT -->|6. Nếu có: trả giờ hẹn và PT| UI
   UI -->|7. Nếu có lịch: hiển nhắc ngay| S
   S -->|8. Chọn gói và xác nhận| UI
-  UI -->|9. Ghi nhận lượt vào| CHECKIN
+  UI -->|9. Ghi nhận lượt vào Gym và điểm danh PT nếu đúng giờ| CHECKIN
   CHECKIN -->|10. Trả kết quả| S
 ```
 
-Nhắc lịch chỉ hiện khi Hội viên có lịch PT hoạt động trong ngày. Quét lại không tạo thêm check-in; check-in không tự hoàn thành booking.
+Nhắc lịch chỉ hiện khi Hội viên có lịch PT hoạt động trong ngày. Quét lại không tạo thêm lượt Gym nhưng vẫn ghi điểm danh PT nếu nằm trong cửa sổ hợp lệ; điểm danh không tự hoàn thành booking.
 
 ## 4. Đánh giá nhân viên
 

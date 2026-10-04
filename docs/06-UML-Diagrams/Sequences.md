@@ -83,18 +83,19 @@ sequenceDiagram
     T->>UI: Xác nhận lịch
     UI->>SYS: Chuyển sang Đã xác nhận
     SYS-->>M: Thông báo lịch đã xác nhận
-    alt Buổi tập hoàn thành
-      T->>UI: Đánh dấu Hoàn thành
-      UI->>SYS: Yêu cầu xác nhận hoàn thành
-      alt Đã check-in Gym trước giờ PT
-        SYS->>SYS: Ghi nhận đã dùng một buổi
-        SYS-->>M: Thông báo buổi tập đã hoàn thành
-      else Chưa check-in hoặc check-in muộn
-        SYS-->>UI: Không cho hoàn thành
-      end
-    else Hội viên vắng mặt
-      T->>UI: Đánh dấu Vắng mặt
+    opt Quét QR từ 60 phút trước đến hết 5 phút đệm
+      M-->>UI: Xuất trình QR tại quầy
+      UI->>SYS: Ghi điểm danh cho lịch PT
+    end
+    Note over SYS: Hết giờ tập + 5 phút
+    alt Có điểm danh PT hợp lệ
+      SYS-->>T: Chuyển sang Chờ xác nhận hoàn thành
+      T->>UI: Chọn Hoàn thành
       UI->>SYS: Ghi nhận đã dùng một buổi
+      SYS-->>M: Thông báo buổi tập đã hoàn thành
+    else Không có điểm danh PT
+      SYS->>SYS: Tự động ghi nhận Vắng mặt và dùng một buổi
+      SYS-->>M: Thông báo vắng mặt
     end
   else PT từ chối
     T->>UI: Từ chối và nhập lý do
@@ -123,7 +124,7 @@ sequenceDiagram
   end
 ```
 
-Lịch `PENDING`, `CONFIRMED` hoặc `CANCEL_REQUESTED` giữ một buổi. `COMPLETED` và `NO_SHOW` dùng một buổi; `REJECTED` và `CANCELLED` hoàn lại buổi.
+Lịch `PENDING`, `CONFIRMED`, `CANCEL_REQUESTED` hoặc `AWAITING_COMPLETION` giữ một buổi. `COMPLETED` và `NO_SHOW` dùng một buổi; `REJECTED` và `CANCELLED` hoàn lại buổi.
 Chủ phòng có thể hỗ trợ xử lý lịch, nhưng chỉ PT mở khung giờ của chính mình.
 
 ## 4. Check-in bằng QR
@@ -145,19 +146,20 @@ sequenceDiagram
   end
   S->>UI: Chọn gói và xác nhận
   UI->>SYS: Ghi nhận check-in
+  SYS->>SYS: Nếu đúng cửa sổ PT, lưu điểm danh cho booking
 
   alt Chưa check-in hôm nay
     SYS->>SYS: Lưu lượt check-in
     SYS->>SYS: Tìm lịch PT hôm nay
     SYS-->>UI: Check-in thành công + lịch PT
   else Đã check-in hôm nay
-    SYS->>SYS: Không ghi/trừ thêm, tìm lịch PT hôm nay
+    SYS->>SYS: Không ghi/trừ thêm lượt Gym, vẫn ghi được điểm danh PT
     SYS-->>UI: Kết quả đã check-in + lịch PT
     Note over S,UI: Lễ tân vẫn có thể cho Hội viên vào
   end
 ```
 
-Hội viên chỉ hiển thị QR; quyền ghi nhận check-in thuộc Lễ tân hoặc Chủ phòng. Check-in không tự đổi booking, nhưng check-in không muộn hơn giờ bắt đầu là điều kiện để PT xác nhận hoàn thành.
+Hội viên chỉ hiển thị QR; quyền xác nhận tại quầy thuộc Lễ tân hoặc Chủ phòng. Lượt Gym vẫn tối đa một lần/ngày, còn điểm danh PT được lưu riêng khi quét từ 60 phút trước giờ bắt đầu đến 5 phút sau giờ kết thúc.
 
 ## 5. Đánh giá nhân viên
 
