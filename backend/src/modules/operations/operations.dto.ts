@@ -1,12 +1,9 @@
 import {
   IsDateString,
   IsEnum,
-  IsInt,
   IsOptional,
   IsString,
-  Max,
   MaxLength,
-  Min,
 } from 'class-validator';
 import { BookingStatus } from '@prisma/client';
 
@@ -38,11 +35,6 @@ export class ListSlotsQueryDto {
   @IsOptional() @IsDateString() from?: string;
   @IsOptional() @IsDateString() to?: string;
   @IsOptional() @IsEnum(SlotSort) sort: SlotSort = SlotSort.SOONEST;
-}
-
-export class CreateTrainerReviewDto {
-  @IsInt() @Min(1) @Max(5) rating!: number;
-  @IsOptional() @IsString() @MaxLength(1000) comment?: string;
 }
 
 export class CheckinDto {

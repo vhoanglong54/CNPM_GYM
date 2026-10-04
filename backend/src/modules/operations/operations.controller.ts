@@ -16,7 +16,6 @@ import {
   CheckinDto,
   CreateBookingDto,
   CreateSlotDto,
-  CreateTrainerReviewDto,
   ListSlotsQueryDto,
   UpdateBookingStatusDto,
 } from './operations.dto.js';
@@ -55,25 +54,22 @@ export class OperationsController {
       'Đặt lịch PT thành công.',
     );
   }
-  @Patch('bookings/:id/status') updateBooking(
+  @Patch('bookings/:id/status') async updateBooking(
     @Param('id') id: string,
     @Body() dto: UpdateBookingStatusDto,
     @CurrentUser() user: AuthUser,
   ) {
-    return this.wrap(
-      this.service.updateBooking(id, dto, user),
-      'Cập nhật lịch PT thành công.',
-    );
-  }
-  @Post('bookings/:id/review') reviewBooking(
-    @Param('id') id: string,
-    @Body() dto: CreateTrainerReviewDto,
-    @CurrentUser() user: AuthUser,
-  ) {
-    return this.wrap(
-      this.service.reviewBooking(id, dto, user),
-      'Cảm ơn bạn đã đánh giá PT.',
-    );
+    const data = await this.service.updateBooking(id, dto, user);
+    const message =
+      data.status === 'CANCEL_REQUESTED'
+        ? 'Đã gửi yêu cầu hủy muộn đến PT và Chủ phòng.'
+        : data.status === 'CANCELLED'
+          ? 'Đã hủy lịch và hoàn lại buổi PT.'
+          : data.status === 'CONFIRMED' &&
+              data.resolutionReason?.startsWith('Yêu cầu hủy bị từ chối')
+            ? 'Đã từ chối yêu cầu hủy và giữ nguyên lịch tập.'
+            : 'Cập nhật lịch PT thành công.';
+    return { success: true, data, message };
   }
   @Get('checkins') checkins(@CurrentUser() user: AuthUser) {
     return this.wrap(this.service.listCheckins(user));

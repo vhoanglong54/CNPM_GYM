@@ -8,7 +8,6 @@ import type {
   CheckinDto,
   CreateBookingDto,
   CreateSlotDto,
-  CreateTrainerReviewDto,
   ListSlotsQueryDto,
   UpdateBookingStatusDto,
 } from './operations.dto.js';
@@ -67,30 +66,44 @@ export class OperationsService {
       ...(query.to ? { lt: new Date(query.to) } : {}),
     };
     const slots = await this.prisma.ptSlot.findMany({
-      where: { isOpen: true, startsAt },
+      where: {
+        isOpen: true,
+        startsAt,
+        trainer: { user: { status: 'ACTIVE' } },
+      },
       include: {
-        trainer: { include: { user: { select: { fullName: true } } } },
+        trainer: {
+          include: { user: { select: { id: true, fullName: true } } },
+        },
         bookings: {
           where: {
-            status: { in: [BookingStatus.PENDING, BookingStatus.CONFIRMED] },
+            status: {
+              in: [
+                BookingStatus.PENDING,
+                BookingStatus.CONFIRMED,
+                BookingStatus.CANCEL_REQUESTED,
+              ],
+            },
           },
           select: { id: true, status: true },
         },
       },
       orderBy: { startsAt: 'asc' },
     });
-    const trainerIds = [...new Set(slots.map((slot) => slot.trainerId))];
-    const ratings = trainerIds.length
-      ? await this.prisma.trainerReview.groupBy({
-          by: ['trainerId'],
-          where: { trainerId: { in: trainerIds } },
+    const trainerUserIds = [
+      ...new Set(slots.map((slot) => slot.trainer.user.id)),
+    ];
+    const ratings = trainerUserIds.length
+      ? await this.prisma.staffReview.groupBy({
+          by: ['staffId'],
+          where: { staffId: { in: trainerUserIds } },
           _avg: { rating: true },
           _count: { rating: true },
         })
       : [];
     const ratingByTrainer = new Map(
       ratings.map((rating) => [
-        rating.trainerId,
+        rating.staffId,
         {
           average: rating._avg.rating ?? null,
           count: rating._count.rating,
@@ -101,7 +114,7 @@ export class OperationsService {
       ...slot,
       trainer: {
         ...slot.trainer,
-        rating: ratingByTrainer.get(slot.trainerId) ?? {
+        rating: ratingByTrainer.get(slot.trainer.user.id) ?? {
           average: null,
           count: 0,
         },
@@ -134,7 +147,13 @@ export class OperationsService {
       include: {
         bookings: {
           where: {
-            status: { in: [BookingStatus.PENDING, BookingStatus.CONFIRMED] },
+            status: {
+              in: [
+                BookingStatus.PENDING,
+                BookingStatus.CONFIRMED,
+                BookingStatus.CANCEL_REQUESTED,
+              ],
+            },
           },
           select: { id: true },
         },
@@ -178,7 +197,18 @@ export class OperationsService {
     return this.prisma.$transaction(
       async (tx) => {
         const slot = await tx.ptSlot.findUnique({ where: { id: dto.slotId } });
-        if (!slot || !slot.isOpen || slot.startsAt <= new Date())
+        const activeTrainer = slot
+          ? await tx.trainerProfile.findFirst({
+              where: { id: slot.trainerId, user: { status: 'ACTIVE' } },
+              select: { id: true },
+            })
+          : null;
+        if (
+          !slot ||
+          !activeTrainer ||
+          !slot.isOpen ||
+          slot.startsAt <= new Date()
+        )
           throw new ApiError(
             'BOOKING_SLOT_UNAVAILABLE',
             'Vui lòng chọn khung giờ còn khả dụng.',
@@ -186,7 +216,13 @@ export class OperationsService {
         const held = await tx.ptBooking.findFirst({
           where: {
             slotId: slot.id,
-            status: { in: [BookingStatus.PENDING, BookingStatus.CONFIRMED] },
+            status: {
+              in: [
+                BookingStatus.PENDING,
+                BookingStatus.CONFIRMED,
+                BookingStatus.CANCEL_REQUESTED,
+              ],
+            },
           },
         });
         if (held)
@@ -198,7 +234,13 @@ export class OperationsService {
         const memberOverlap = await tx.ptBooking.findFirst({
           where: {
             memberId: memberProfileId,
-            status: { in: [BookingStatus.PENDING, BookingStatus.CONFIRMED] },
+            status: {
+              in: [
+                BookingStatus.PENDING,
+                BookingStatus.CONFIRMED,
+                BookingStatus.CANCEL_REQUESTED,
+              ],
+            },
             slot: {
               startsAt: { lt: slot.endsAt },
               endsAt: { gt: slot.startsAt },
@@ -265,7 +307,9 @@ export class OperationsService {
       include: {
         slot: {
           include: {
-            trainer: { include: { user: { select: { fullName: true } } } },
+            trainer: {
+              include: { user: { select: { id: true, fullName: true } } },
+            },
           },
         },
         member: {
@@ -273,17 +317,13 @@ export class OperationsService {
         },
         memberPtPackage: { include: { package: true } },
         resolvedBy: { select: { fullName: true, email: true } },
-        review: true,
+        cancellationRequestedBy: { select: { fullName: true, email: true } },
       },
       orderBy: { createdAt: 'desc' },
     });
   }
 
-  async updateBooking(
-    id: string,
-    dto: UpdateBookingStatusDto,
-    user: AuthUser,
-  ) {
+  async updateBooking(id: string, dto: UpdateBookingStatusDto, user: AuthUser) {
     const next = dto.status;
     const booking = await this.prisma.ptBooking.findUnique({
       where: { id },
@@ -305,6 +345,20 @@ export class OperationsService {
           'Bạn không có quyền xử lý lịch này.',
           HttpStatus.FORBIDDEN,
         );
+      if (booking.status === BookingStatus.CANCEL_REQUESTED) {
+        if (!ownsAsTrainer && !isOwner)
+          throw new ApiError(
+            'BOOKING_CANCELLATION_APPROVAL_REQUIRED',
+            'Yêu cầu hủy muộn phải được PT hoặc Chủ phòng xử lý.',
+            HttpStatus.FORBIDDEN,
+          );
+        return this.releaseReservedSession(
+          id,
+          BookingStatus.CANCELLED,
+          booking.cancellationReason ?? 'Đã chấp nhận yêu cầu hủy muộn.',
+          user,
+        );
+      }
       if (
         booking.status !== BookingStatus.PENDING &&
         booking.status !== BookingStatus.CONFIRMED
@@ -318,18 +372,20 @@ export class OperationsService {
           'BOOKING_CANCEL_TOO_LATE',
           'Không thể hủy lịch đã bắt đầu.',
         );
+      const suppliedReason = dto.reason?.trim() ?? '';
       if (
         ownsAsMember &&
         booking.status === BookingStatus.CONFIRMED &&
         booking.slot.startsAt.getTime() - Date.now() <
           MEMBER_CANCELLATION_CUTOFF_MS
-      )
-        throw new ApiError(
-          'BOOKING_CANCELLATION_CUTOFF',
-          'Lịch đã xác nhận chỉ có thể hủy trước giờ tập ít nhất 4 giờ.',
-          HttpStatus.CONFLICT,
-        );
-      const suppliedReason = dto.reason?.trim() ?? '';
+      ) {
+        if (suppliedReason.length < 3)
+          throw new ApiError(
+            'BOOKING_REASON_REQUIRED',
+            'Vui lòng nhập lý do yêu cầu hủy muộn.',
+          );
+        return this.requestLateCancellation(booking, suppliedReason, user);
+      }
       if ((ownsAsTrainer || isOwner) && suppliedReason.length < 3)
         throw new ApiError(
           'BOOKING_REASON_REQUIRED',
@@ -349,6 +405,51 @@ export class OperationsService {
         'Bạn không có quyền xử lý lịch này.',
         HttpStatus.FORBIDDEN,
       );
+    if (
+      next === BookingStatus.CONFIRMED &&
+      booking.status === BookingStatus.CANCEL_REQUESTED
+    ) {
+      const reason = dto.reason?.trim() ?? '';
+      if (reason.length < 3)
+        throw new ApiError(
+          'BOOKING_REASON_REQUIRED',
+          'Vui lòng nhập lý do từ chối yêu cầu hủy.',
+        );
+      return this.prisma.$transaction(async (tx) => {
+        const updated = await tx.ptBooking.update({
+          where: { id },
+          data: {
+            status: BookingStatus.CONFIRMED,
+            resolutionReason: `Yêu cầu hủy bị từ chối: ${reason}`,
+            resolvedById: user.id,
+            resolvedAt: new Date(),
+            cancellationRequestedById: null,
+            cancellationRequestedAt: null,
+            cancellationReason: null,
+          },
+        });
+        const member = await tx.memberProfile.findUniqueOrThrow({
+          where: { id: booking.memberId },
+          select: { userId: true },
+        });
+        await tx.auditLog.create({
+          data: {
+            actorId: user.id,
+            action: 'REJECT_BOOKING_CANCELLATION',
+            entityType: 'PtBooking',
+            entityId: id,
+            metadata: { reason },
+          },
+        });
+        await this.notifications.notifyUsers(tx, [member.userId], {
+          type: 'BOOKING_CANCELLATION_REJECTED',
+          title: 'Yêu cầu hủy lịch chưa được chấp nhận',
+          message: reason,
+          metadata: { bookingId: id },
+        });
+        return updated;
+      });
+    }
     if (
       next === BookingStatus.CONFIRMED &&
       booking.status === BookingStatus.PENDING
@@ -420,10 +521,7 @@ export class OperationsService {
           const pkg = await tx.memberPtPackage.findUniqueOrThrow({
             where: { id: current.memberPtPackageId },
           });
-          if (
-            pkg.sessionsReserved < 1 ||
-            pkg.sessionsUsed >= pkg.sessionsTotal
-          )
+          if (pkg.sessionsReserved < 1 || pkg.sessionsUsed >= pkg.sessionsTotal)
             throw new ApiError(
               'PT_SESSIONS_EXHAUSTED',
               'Số buổi PT còn lại không đủ.',
@@ -439,8 +537,7 @@ export class OperationsService {
             where: { id },
             data: {
               status: next,
-              completedAt:
-                next === BookingStatus.COMPLETED ? new Date() : null,
+              completedAt: next === BookingStatus.COMPLETED ? new Date() : null,
               holdKey: null,
               resolutionReason:
                 next === BookingStatus.NO_SHOW
@@ -477,7 +574,7 @@ export class OperationsService {
                 : 'Buổi PT được ghi nhận vắng mặt',
             message:
               next === BookingStatus.COMPLETED
-                ? 'Bạn có thể đánh giá PT cho buổi tập vừa hoàn thành.'
+                ? 'Buổi tập đã được ghi nhận. Bạn có thể đánh giá nhân viên tại trang Đánh giá nhân viên.'
                 : 'Buổi đã xác nhận được tính là vắng mặt và đã trừ một buổi PT.',
             metadata: { bookingId: id },
           });
@@ -492,59 +589,56 @@ export class OperationsService {
     );
   }
 
-  async reviewBooking(
-    bookingId: string,
-    dto: CreateTrainerReviewDto,
+  private async requestLateCancellation(
+    booking: {
+      id: string;
+      memberId: string;
+      slotId: string;
+      slot: { trainerId: string; startsAt: Date };
+    },
+    reason: string,
     user: AuthUser,
   ) {
-    if (!user.memberProfileId)
-      throw new ApiError(
-        'MEMBER_PROFILE_REQUIRED',
-        'Chỉ hội viên tham gia buổi tập mới có thể đánh giá PT.',
-        HttpStatus.FORBIDDEN,
-      );
-    const booking = await this.prisma.ptBooking.findUnique({
-      where: { id: bookingId },
-      include: { slot: true, review: true },
-    });
-    if (!booking || booking.memberId !== user.memberProfileId)
-      throw new ApiError(
-        'BOOKING_NOT_FOUND',
-        'Không tìm thấy buổi PT của bạn.',
-        HttpStatus.NOT_FOUND,
-      );
-    if (booking.status !== BookingStatus.COMPLETED)
-      throw new ApiError(
-        'REVIEW_BOOKING_NOT_COMPLETED',
-        'Chỉ có thể đánh giá sau khi buổi PT đã hoàn thành.',
-      );
-    if (booking.review)
-      throw new ApiError(
-        'REVIEW_ALREADY_EXISTS',
-        'Buổi PT này đã được đánh giá.',
-        HttpStatus.CONFLICT,
-      );
     return this.prisma.$transaction(async (tx) => {
-      const review = await tx.trainerReview.create({
+      const updated = await tx.ptBooking.update({
+        where: { id: booking.id },
         data: {
-          bookingId,
-          trainerId: booking.slot.trainerId,
-          memberId: user.memberProfileId!,
-          rating: dto.rating,
-          comment: dto.comment?.trim() || null,
+          status: BookingStatus.CANCEL_REQUESTED,
+          cancellationRequestedById: user.id,
+          cancellationRequestedAt: new Date(),
+          cancellationReason: reason,
         },
       });
-      const trainer = await tx.trainerProfile.findUniqueOrThrow({
-        where: { id: booking.slot.trainerId },
-        select: { userId: true },
+      const [trainer, owners] = await Promise.all([
+        tx.trainerProfile.findUniqueOrThrow({
+          where: { id: booking.slot.trainerId },
+          select: { userId: true },
+        }),
+        tx.user.findMany({
+          where: { roles: { some: { role: { code: RoleCode.OWNER } } } },
+          select: { id: true },
+        }),
+      ]);
+      await tx.auditLog.create({
+        data: {
+          actorId: user.id,
+          action: 'REQUEST_LATE_BOOKING_CANCELLATION',
+          entityType: 'PtBooking',
+          entityId: booking.id,
+          metadata: { reason },
+        },
       });
-      await this.notifications.notifyUsers(tx, [trainer.userId], {
-        type: 'TRAINER_REVIEWED',
-        title: 'Bạn có đánh giá mới',
-        message: `Hội viên đã đánh giá ${dto.rating}/5 sao cho một buổi tập đã hoàn thành.`,
-        metadata: { bookingId, reviewId: review.id },
-      });
-      return review;
+      await this.notifications.notifyUsers(
+        tx,
+        [trainer.userId, ...owners.map((owner) => owner.id)],
+        {
+          type: 'BOOKING_CANCELLATION_REQUESTED',
+          title: 'Có yêu cầu hủy lịch PT muộn',
+          message: `${formatAppDateTime(booking.slot.startsAt)} · ${reason}`,
+          metadata: { bookingId: booking.id, slotId: booking.slotId },
+        },
+      );
+      return updated;
     });
   }
 
@@ -569,7 +663,8 @@ export class OperationsService {
         });
         if (
           current.status !== BookingStatus.PENDING &&
-          current.status !== BookingStatus.CONFIRMED
+          current.status !== BookingStatus.CONFIRMED &&
+          current.status !== BookingStatus.CANCEL_REQUESTED
         )
           throw new ApiError(
             'BOOKING_STATE_INVALID',
