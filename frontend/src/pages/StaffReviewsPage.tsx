@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { ArrowLeft, BriefcaseBusiness, MessageSquareText, Search, ShieldCheck, Star, UserRound } from 'lucide-react'
 import { Link, useSearchParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { useAuth } from '../context/AuthContext'
 import { api, getErrorMessage } from '../lib/api'
 import { formatAppDate } from '../lib/dateTime'
+import { publishDataChange, subscribeDataChanges } from '../lib/liveUpdates'
+import { createRequestGate } from '../lib/requestGate'
 import type { ApiResponse, ReviewableStaff, StaffReviewDetail } from '../types'
 
 type StaffFilter = 'ALL' | 'TRAINER' | 'RECEPTIONIST'
@@ -21,44 +23,73 @@ export function StaffReviewsPage() {
   const [rating, setRating] = useState(5)
   const [comment, setComment] = useState('')
   const [busy, setBusy] = useState(false)
+  const busyRef = useRef(false)
+  const [staffRequestGate] = useState(createRequestGate)
+  const [detailRequestGate] = useState(createRequestGate)
   const member = user?.roles.includes('MEMBER')
   const selectedId = searchParams.get('staff')
 
   const loadStaff = useCallback(async (silent = false) => {
+    const token = staffRequestGate.begin()
     try {
       const { data } = await api.get<ApiResponse<ReviewableStaff[]>>('/reviews/staff')
-      setStaff(data.data)
+      if (staffRequestGate.canApply(token)) setStaff(data.data)
     } catch (error) {
       if (!silent) toast.error(getErrorMessage(error))
     }
-  }, [])
+  }, [staffRequestGate])
 
-  const loadDetail = useCallback(async (id: string, silent = false) => {
+  const loadDetail = useCallback(async (id: string, silent = false, syncForm = false) => {
+    const token = detailRequestGate.begin()
     try {
       const { data } = await api.get<ApiResponse<StaffReviewDetail>>(`/reviews/staff/${id}`)
+      if (!detailRequestGate.canApply(token)) return
       setDetail(data.data)
-      setRating(data.data.myReview?.rating ?? 5)
-      setComment(data.data.myReview?.comment ?? '')
+      if (syncForm) {
+        setRating(data.data.myReview?.rating ?? 5)
+        setComment(data.data.myReview?.comment ?? '')
+      }
     } catch (error) {
       if (!silent) toast.error(getErrorMessage(error))
-      setDetail(null)
+      if (!silent) setDetail(null)
     }
-  }, [])
+  }, [detailRequestGate])
 
   /* oxlint-disable react/set-state-in-effect -- page state follows the staff id in the URL */
   useEffect(() => {
     void loadStaff()
-    const timer = window.setInterval(() => void loadStaff(true), 10_000)
-    return () => window.clearInterval(timer)
+    const refresh = () => { if (!document.hidden) void loadStaff(true) }
+    const timer = window.setInterval(refresh, 30_000)
+    const unsubscribe = subscribeDataChanges(['reviews', 'people'], refresh)
+    window.addEventListener('focus', refresh)
+    document.addEventListener('visibilitychange', refresh)
+    return () => {
+      window.clearInterval(timer)
+      unsubscribe()
+      window.removeEventListener('focus', refresh)
+      document.removeEventListener('visibilitychange', refresh)
+    }
   }, [loadStaff])
   useEffect(() => {
-    if (selectedId) void loadDetail(selectedId)
-    else setDetail(null)
-  }, [loadDetail, selectedId])
+    detailRequestGate.invalidate()
+    if (selectedId) {
+      setDetail(null)
+      void loadDetail(selectedId, false, true)
+    } else setDetail(null)
+  }, [detailRequestGate, loadDetail, selectedId])
   useEffect(() => {
-    if (!selectedId || member) return
-    const timer = window.setInterval(() => void loadDetail(selectedId, true), 10_000)
-    return () => window.clearInterval(timer)
+    if (!selectedId) return
+    const refresh = () => { if (!document.hidden) void loadDetail(selectedId, true) }
+    const timer = window.setInterval(refresh, 30_000)
+    const unsubscribe = subscribeDataChanges(['reviews', 'people'], refresh)
+    window.addEventListener('focus', refresh)
+    document.addEventListener('visibilitychange', refresh)
+    return () => {
+      window.clearInterval(timer)
+      unsubscribe()
+      window.removeEventListener('focus', refresh)
+      document.removeEventListener('visibilitychange', refresh)
+    }
   }, [loadDetail, member, selectedId])
   /* oxlint-enable react/set-state-in-effect */
 
@@ -81,14 +112,22 @@ export function StaffReviewsPage() {
       toast.error('Vui lòng nhập nhận xét có ít nhất 3 ký tự.')
       return
     }
+    if (busyRef.current) return
+    busyRef.current = true
     setBusy(true)
+    detailRequestGate.invalidate()
+    staffRequestGate.invalidate()
     try {
       const { data } = await api.post<ApiResponse<unknown>>(`/reviews/staff/${detail.id}`, { rating, comment: comment.trim() })
+      detailRequestGate.invalidate()
+      staffRequestGate.invalidate()
       toast.success(data.message)
-      await Promise.all([loadStaff(true), loadDetail(detail.id, true)])
+      publishDataChange('reviews', 'people', 'reports', 'notifications')
+      await Promise.all([loadStaff(true), loadDetail(detail.id, true, true)])
     } catch (error) {
       toast.error(getErrorMessage(error))
     } finally {
+      busyRef.current = false
       setBusy(false)
     }
   }

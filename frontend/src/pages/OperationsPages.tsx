@@ -23,6 +23,8 @@ import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { api, getErrorMessage } from '../lib/api'
 import { appDateParts, appDayIsoRange, appTodayKey, formatAppDate, formatAppDateTime, formatAppTime } from '../lib/dateTime'
+import { publishDataChange, subscribeDataChanges } from '../lib/liveUpdates'
+import { createRequestGate } from '../lib/requestGate'
 import type { ApiResponse, Profile } from '../types'
 
 type BookingStatus = 'PENDING' | 'CONFIRMED' | 'CANCEL_REQUESTED' | 'COMPLETED' | 'REJECTED' | 'CANCELLED' | 'NO_SHOW'
@@ -111,6 +113,7 @@ export function SchedulePage() {
   const [slotDate, setSlotDate] = useState('')
   const [slotSort, setSlotSort] = useState<SlotSort>('SOONEST')
   const [busy, setBusy] = useState('')
+  const busyRef = useRef('')
   const [bookingAction, setBookingAction] = useState<{ booking: Booking; status: BookingStatus; title: string } | null>(null)
   const [actionReason, setActionReason] = useState('')
   const loadRequestRef = useRef(0)
@@ -148,12 +151,14 @@ export function SchedulePage() {
   /* oxlint-disable react/set-state-in-effect -- effect loads server state and registers live refresh */
   useEffect(() => {
     void load()
-    const timer = window.setInterval(() => { if (!document.hidden) void load(true) }, 10_000)
+    const timer = window.setInterval(() => { if (!document.hidden) void load(true) }, 30_000)
     const refreshVisiblePage = () => { if (!document.hidden) void load(true) }
+    const unsubscribe = subscribeDataChanges(['schedule', 'profile'], refreshVisiblePage)
     window.addEventListener('focus', refreshVisiblePage)
     document.addEventListener('visibilitychange', refreshVisiblePage)
     return () => {
       window.clearInterval(timer)
+      unsubscribe()
       window.removeEventListener('focus', refreshVisiblePage)
       document.removeEventListener('visibilitychange', refreshVisiblePage)
     }
@@ -194,6 +199,8 @@ export function SchedulePage() {
   const book = async (event: FormEvent) => {
     event.preventDefault()
     if (!selectedSlot || !selectedPackageId) return
+    if (busyRef.current) return
+    busyRef.current = 'booking'
     setBusy('booking')
     dataVersionRef.current += 1
     try {
@@ -205,10 +212,12 @@ export function SchedulePage() {
       dataVersionRef.current += 1
       toast.success(data.message)
       setSelectedSlot(null)
+      publishDataChange('schedule', 'profile', 'dashboard', 'reports', 'notifications')
       await load()
     } catch (error) {
       toast.error(getErrorMessage(error))
     } finally {
+      busyRef.current = ''
       setBusy('')
     }
   }
@@ -224,6 +233,8 @@ export function SchedulePage() {
   }
 
   const updateBooking = async (booking: Booking, status: BookingStatus, reason?: string) => {
+    if (busyRef.current) return
+    busyRef.current = booking.id
     setBusy(booking.id)
     dataVersionRef.current += 1
     try {
@@ -233,10 +244,12 @@ export function SchedulePage() {
       toast.success(data.message)
       setBookingAction(null)
       setActionReason('')
+      publishDataChange('schedule', 'profile', 'dashboard', 'reports', 'notifications')
       void load(true)
     } catch (error) {
       toast.error(getErrorMessage(error))
     } finally {
+      busyRef.current = ''
       setBusy('')
     }
   }
@@ -252,6 +265,8 @@ export function SchedulePage() {
 
   const closeSlot = async (slot: Slot) => {
     if (!window.confirm(`Đóng khung giờ ${formatTime(slot.startsAt)} ngày ${formatDate(slot.startsAt)}?`)) return
+    if (busyRef.current) return
+    busyRef.current = slot.id
     setBusy(slot.id)
     dataVersionRef.current += 1
     try {
@@ -259,10 +274,12 @@ export function SchedulePage() {
       dataVersionRef.current += 1
       setSlots((current) => current.filter((item) => item.id !== slot.id))
       toast.success(data.message)
+      publishDataChange('schedule', 'dashboard')
       void load(true)
     } catch (error) {
       toast.error(getErrorMessage(error))
     } finally {
+      busyRef.current = ''
       setBusy('')
     }
   }
@@ -291,7 +308,7 @@ export function SchedulePage() {
       <ScheduleStat icon={Dumbbell} label={member ? 'Số buổi PT còn lại' : 'Tổng lịch được quản lý'} value={member ? remainingSessions : bookings.length} />
     </section>
 
-    {showSlotForm && <SlotForm onDone={() => { setShowSlotForm(false); void load() }} />}
+    {showSlotForm && <SlotForm onDone={() => { dataVersionRef.current += 1; setShowSlotForm(false); void load() }} />}
 
     <div className="section-heading schedule-section-heading">
       <div>
@@ -370,16 +387,21 @@ function SlotForm({ onDone }: { onDone: () => void }) {
   const [start, setStart] = useState('')
   const [end, setEnd] = useState('')
   const [busy, setBusy] = useState(false)
+  const busyRef = useRef(false)
   const submit = async (event: FormEvent) => {
     event.preventDefault()
+    if (busyRef.current) return
+    busyRef.current = true
     setBusy(true)
     try {
       const { data } = await api.post<ApiResponse<unknown>>('/operations/slots', { startsAt: new Date(start).toISOString(), endsAt: new Date(end).toISOString() })
       toast.success(data.message)
+      publishDataChange('schedule', 'dashboard')
       onDone()
     } catch (error) {
       toast.error(getErrorMessage(error))
     } finally {
+      busyRef.current = false
       setBusy(false)
     }
   }
@@ -403,33 +425,59 @@ export function CheckinPage() {
   const [cameraOpen, setCameraOpen] = useState(false)
   const [eligibility, setEligibility] = useState<CheckinEligibility | null>(null)
   const [selectedMembershipId, setSelectedMembershipId] = useState('')
+  const busyRef = useRef(false)
+  const checkinKeyRef = useRef('')
+  const [loadRequestGate] = useState(createRequestGate)
+  const [eligibilityRequestGate] = useState(createRequestGate)
   const isMember = user?.roles.includes('MEMBER')
-  const load = useCallback((silent = false) => Promise.all([
-    api.get<ApiResponse<Profile>>('/users/me/profile'),
-    api.get<ApiResponse<Checkin[]>>('/operations/checkins'),
-  ]).then(([profileResponse, historyResponse]) => {
-    setProfile(profileResponse.data.data)
-    setHistory(historyResponse.data.data)
-  }).catch((error) => { if (!silent) toast.error(getErrorMessage(error)) }), [])
+  const load = useCallback(async (silent = false) => {
+    const token = loadRequestGate.begin()
+    try {
+      const [profileResponse, historyResponse] = await Promise.all([
+        api.get<ApiResponse<Profile>>('/users/me/profile'),
+        api.get<ApiResponse<Checkin[]>>('/operations/checkins'),
+      ])
+      if (!loadRequestGate.canApply(token)) return
+      setProfile(profileResponse.data.data)
+      setHistory(historyResponse.data.data)
+    } catch (error) {
+      if (!silent) toast.error(getErrorMessage(error))
+    }
+  }, [loadRequestGate])
 
-  /* oxlint-disable-next-line react/set-state-in-effect -- check-in history stays synchronized across front-desk tabs */
+  /* oxlint-disable react/set-state-in-effect -- check-in history stays synchronized across front-desk tabs */
   useEffect(() => {
     void load()
-    const timer = window.setInterval(() => void load(true), 10_000)
-    return () => window.clearInterval(timer)
+    const refresh = () => { if (!document.hidden) void load(true) }
+    const timer = window.setInterval(refresh, 30_000)
+    const unsubscribe = subscribeDataChanges(['checkins', 'profile'], refresh)
+    window.addEventListener('focus', refresh)
+    document.addEventListener('visibilitychange', refresh)
+    return () => {
+      window.clearInterval(timer)
+      unsubscribe()
+      window.removeEventListener('focus', refresh)
+      document.removeEventListener('visibilitychange', refresh)
+    }
   }, [load])
+  /* oxlint-enable react/set-state-in-effect */
 
   const inspectMemberships = async (memberCode: string) => {
-    if (!memberCode.trim()) return
+    if (!memberCode.trim() || busyRef.current) return
+    busyRef.current = true
     setBusy(true)
     setEligibility(null)
+    const token = eligibilityRequestGate.begin()
     try {
       const { data } = await api.get<ApiResponse<CheckinEligibility>>(`/operations/checkins/eligibility/${encodeURIComponent(memberCode.trim().toUpperCase())}`)
+      if (!eligibilityRequestGate.canApply(token)) return
       setEligibility(data.data)
       setSelectedMembershipId(data.data.recommendedMembershipId)
+      checkinKeyRef.current = crypto.randomUUID()
     } catch (error) {
       toast.error(getErrorMessage(error))
     } finally {
+      busyRef.current = false
       setBusy(false)
     }
   }
@@ -440,18 +488,24 @@ export function CheckinPage() {
   }
 
   const checkin = async () => {
-    if (!code.trim() || !selectedMembershipId) return
+    if (!code.trim() || !selectedMembershipId || busyRef.current) return
+    busyRef.current = true
     setBusy(true)
+    loadRequestGate.invalidate()
     try {
-      const { data } = await api.post<ApiResponse<unknown>>('/operations/checkins', { memberCode: code.trim().toUpperCase(), memberMembershipId: selectedMembershipId, idempotencyKey: crypto.randomUUID() })
+      const { data } = await api.post<ApiResponse<unknown>>('/operations/checkins', { memberCode: code.trim().toUpperCase(), memberMembershipId: selectedMembershipId, idempotencyKey: checkinKeyRef.current || crypto.randomUUID() })
+      loadRequestGate.invalidate()
       toast.success(data.message)
       setCode('')
       setEligibility(null)
       setSelectedMembershipId('')
+      checkinKeyRef.current = ''
+      publishDataChange('checkins', 'profile', 'dashboard', 'reports')
       await load()
     } catch (error) {
       toast.error(getErrorMessage(error))
     } finally {
+      busyRef.current = false
       setBusy(false)
     }
   }
@@ -476,7 +530,7 @@ export function CheckinPage() {
         <div className="scanner-heading"><div><span className="eyebrow dark">QUÉT MÃ HỘI VIÊN</span><h3>Camera quét QR</h3></div><button type="button" className={`btn ${cameraOpen ? 'btn-ghost' : 'btn-dark'}`} onClick={() => setCameraOpen(!cameraOpen)}>{cameraOpen ? <><CameraOff /> Đóng camera</> : <><Camera /> Mở camera</>}</button></div>
         {cameraOpen && <CameraScanner onDetected={acceptScan} onClose={() => setCameraOpen(false)} />}
         {!cameraOpen && <div className="camera-placeholder"><ScanLine /><strong>Quét QR trên điện thoại hội viên</strong><small>Nếu thiết bị không hỗ trợ camera, hãy nhập mã ở bên dưới.</small></div>}
-        <form onSubmit={lookup} className="checkin-form"><label>Mã hội viên<input value={code} onChange={(event) => { setCode(event.target.value.toUpperCase()); setEligibility(null); setSelectedMembershipId('') }} placeholder="Ví dụ: MB-000101" required /><small>Nhập đúng mã đang hiển thị trên tài khoản Hội viên.</small></label><button className="btn btn-dark btn-wide" disabled={busy || !code.trim()}><ScanLine /> {busy ? 'Đang kiểm tra...' : 'Kiểm tra quyền lợi'}</button></form>
+        <form onSubmit={lookup} className="checkin-form"><label>Mã hội viên<input value={code} onChange={(event) => { eligibilityRequestGate.invalidate(); checkinKeyRef.current = ''; setCode(event.target.value.toUpperCase()); setEligibility(null); setSelectedMembershipId('') }} placeholder="Ví dụ: MB-000101" required /><small>Nhập đúng mã đang hiển thị trên tài khoản Hội viên.</small></label><button className="btn btn-dark btn-wide" disabled={busy || !code.trim()}><ScanLine /> {busy ? 'Đang kiểm tra...' : 'Kiểm tra quyền lợi'}</button></form>
         {eligibility && <div className="eligibility-panel"><div className="eligibility-member"><div><strong>{eligibility.member.fullName}</strong><small>{eligibility.member.memberCode} · {eligibility.member.email}</small></div><span>Đủ điều kiện</span></div><p>Chọn đúng gói sẽ được ghi nhận cho lượt check-in này:</p><div className="membership-choices">{eligibility.memberships.map((membership) => <label className={selectedMembershipId === membership.id ? 'selected' : ''} key={membership.id}><input type="radio" name="checkin-membership" value={membership.id} checked={selectedMembershipId === membership.id} onChange={() => setSelectedMembershipId(membership.id)} /><span><strong>{membership.planName}</strong><small>{membership.type === 'DURATION' ? `Còn ${membership.remainingDays ?? 0} ngày · hết hạn ${membership.endDate ? formatAppDate(membership.endDate) : '—'}` : `Còn ${(membership.visitsTotal ?? 0) - membership.visitsUsed}/${membership.visitsTotal ?? 0} lượt`}</small></span>{membership.id === eligibility.recommendedMembershipId && <em>Đề xuất</em>}</label>)}</div><button type="button" className="btn btn-primary btn-wide" disabled={busy || !selectedMembershipId} onClick={() => void checkin()}><CheckCircle2 /> {busy ? 'Đang ghi nhận...' : `Xác nhận với ${eligibility.memberships.find((item) => item.id === selectedMembershipId)?.planName ?? 'gói đã chọn'}`}</button></div>}
       </div>}
       <div className="card"><div className="card-heading"><div><span className="eyebrow dark">HOẠT ĐỘNG GẦN ĐÂY</span><h3>{isMember ? 'Lịch sử vào tập của tôi' : 'Lịch sử check-in'}</h3></div></div><div className="timeline">{history.length ? history.slice(0, 10).map((item) => <div className="timeline-item" key={item.id}><i /><div><strong>{item.member.user.fullName}</strong><small>{item.memberMembership.plan.name}</small></div><time>{formatAppDateTime(item.checkedInAt)}</time></div>) : <div className="empty-state"><Clock3 /><p>Chưa có lượt check-in.</p></div>}</div></div>

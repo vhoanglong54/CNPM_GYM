@@ -4,6 +4,8 @@ import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { api, getErrorMessage, money } from '../lib/api'
 import { formatAppDate, formatAppDateTime, formatAppLongDate } from '../lib/dateTime'
+import { subscribeDataChanges } from '../lib/liveUpdates'
+import { createRequestGate } from '../lib/requestGate'
 import type { ApiResponse, Profile } from '../types'
 
 interface DashboardData {
@@ -22,9 +24,10 @@ const date = formatAppLongDate(new Date())
 export function DashboardPage() {
   const { user } = useAuth(); const isOwner=user?.roles.includes('OWNER');const isMember=user?.roles.includes('MEMBER');const isTrainer=user?.roles.includes('TRAINER')
   const [data,setData]=useState<DashboardData|null>(null);const [profile,setProfile]=useState<Profile|null>(null);const [error,setError]=useState('')
-  const load=useCallback((silent=false)=>{const url=isOwner?'/reports/dashboard':'/users/me/profile';return api.get<ApiResponse<DashboardData|Profile>>(url).then(({data})=>{setError('');if(isOwner)setData(data.data as DashboardData);else setProfile(data.data as Profile)}).catch(e=>{if(!silent)setError(getErrorMessage(e))})},[isOwner])
+  const [requestGate]=useState(createRequestGate)
+  const load=useCallback(async(silent=false)=>{const token=requestGate.begin();const url=isOwner?'/reports/dashboard':'/users/me/profile';try{const{data:response}=await api.get<ApiResponse<DashboardData|Profile>>(url);if(!requestGate.canApply(token))return;setError('');if(isOwner)setData(response.data as DashboardData);else setProfile(response.data as Profile)}catch(error){if(!silent)setError(getErrorMessage(error))}},[isOwner,requestGate])
   /* oxlint-disable-next-line react/set-state-in-effect -- dashboard stays synchronized with operational changes */
-  useEffect(()=>{void load();const timer=window.setInterval(()=>{if(!document.hidden)void load(true)},15_000);const refresh=()=>{if(!document.hidden)void load(true)};window.addEventListener('focus',refresh);document.addEventListener('visibilitychange',refresh);return()=>{window.clearInterval(timer);window.removeEventListener('focus',refresh);document.removeEventListener('visibilitychange',refresh)}},[load])
+  useEffect(()=>{void load();const refresh=()=>{if(!document.hidden)void load(true)};const timer=window.setInterval(refresh,30_000);const unsubscribe=subscribeDataChanges(['dashboard','orders','schedule','checkins','profile'],refresh);window.addEventListener('focus',refresh);document.addEventListener('visibilitychange',refresh);return()=>{window.clearInterval(timer);unsubscribe();window.removeEventListener('focus',refresh);document.removeEventListener('visibilitychange',refresh)}},[load])
   if(error)return <div className="empty-state"><Activity/><h3>Chưa thể tải tổng quan</h3><p>{error}</p></div>
   if((isOwner&&!data)||(!isOwner&&!profile))return <div className="loading-card">Đang tải tổng quan...</div>
   return <>

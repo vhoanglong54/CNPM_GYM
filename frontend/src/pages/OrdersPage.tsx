@@ -17,6 +17,7 @@ import { useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { api, getErrorMessage, money } from '../lib/api'
 import { formatAppDateTime, formatAppTime } from '../lib/dateTime'
+import { publishDataChange, subscribeDataChanges } from '../lib/liveUpdates'
 import type { ApiResponse, Order, OrderPayment } from '../types'
 
 type OrderFilter = 'ALL' | Order['status']
@@ -42,6 +43,7 @@ export function OrdersPage() {
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<OrderFilter>('ALL')
   const [busy, setBusy] = useState('')
+  const busyRef = useRef('')
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null)
   const loadRequestRef = useRef(0)
   const lastAppliedRequestRef = useRef(0)
@@ -74,12 +76,14 @@ export function OrdersPage() {
   /* oxlint-disable react/set-state-in-effect -- effect loads server state and registers live refresh */
   useEffect(() => {
     void load()
-    const timer = window.setInterval(() => { if (!document.hidden) void load(true) }, 10_000)
+    const timer = window.setInterval(() => { if (!document.hidden) void load(true) }, 30_000)
     const refreshVisiblePage = () => { if (!document.hidden) void load(true) }
+    const unsubscribe = subscribeDataChanges(['orders'], refreshVisiblePage)
     window.addEventListener('focus', refreshVisiblePage)
     document.addEventListener('visibilitychange', refreshVisiblePage)
     return () => {
       window.clearInterval(timer)
+      unsubscribe()
       window.removeEventListener('focus', refreshVisiblePage)
       document.removeEventListener('visibilitychange', refreshVisiblePage)
     }
@@ -89,6 +93,8 @@ export function OrdersPage() {
   const pay = async (order: Order) => {
     const action = isStaff ? 'thu tiền mặt và xác nhận' : 'gửi yêu cầu xác nhận chuyển khoản'
     if (!window.confirm(`Bạn muốn ${action} cho đơn ${order.orderNumber}?`)) return
+    if (busyRef.current) return
+    busyRef.current = order.id
     setBusy(order.id)
     dataVersionRef.current += 1
     try {
@@ -98,16 +104,20 @@ export function OrdersPage() {
       dataVersionRef.current += 1
       applyPayment(order.id, data.data.payment, data.data.status)
       toast.success(data.message)
+      publishDataChange('orders', 'profile', 'dashboard', 'reports', 'notifications')
       void load(true)
     } catch (error) {
       toast.error(getErrorMessage(error))
     } finally {
+      busyRef.current = ''
       setBusy('')
     }
   }
 
   const confirmTransfer = async (order: Order, paymentId: string) => {
     if (!window.confirm(`Xác nhận đã nhận chuyển khoản cho đơn ${order.orderNumber}? Quyền lợi sẽ được kích hoạt ngay.`)) return
+    if (busyRef.current) return
+    busyRef.current = order.id
     setBusy(order.id)
     dataVersionRef.current += 1
     try {
@@ -115,10 +125,12 @@ export function OrdersPage() {
       dataVersionRef.current += 1
       applyPayment(order.id, data.data.payment, data.data.status)
       toast.success(data.message)
+      publishDataChange('orders', 'profile', 'dashboard', 'reports', 'notifications')
       void load(true)
     } catch (error) {
       toast.error(getErrorMessage(error))
     } finally {
+      busyRef.current = ''
       setBusy('')
     }
   }
@@ -130,6 +142,8 @@ export function OrdersPage() {
       toast.error('Vui lòng nhập lý do từ chối rõ ràng.')
       return
     }
+    if (busyRef.current) return
+    busyRef.current = order.id
     setBusy(order.id)
     dataVersionRef.current += 1
     try {
@@ -137,16 +151,20 @@ export function OrdersPage() {
       dataVersionRef.current += 1
       applyPayment(order.id, data.data)
       toast.success(data.message)
+      publishDataChange('orders', 'dashboard', 'reports', 'notifications')
       void load(true)
     } catch (error) {
       toast.error(getErrorMessage(error))
     } finally {
+      busyRef.current = ''
       setBusy('')
     }
   }
 
   const cancel = async (order: Order) => {
     if (!window.confirm(`Hủy đơn ${order.orderNumber}? Thao tác này không thể hoàn tác.`)) return
+    if (busyRef.current) return
+    busyRef.current = order.id
     setBusy(order.id)
     dataVersionRef.current += 1
     setOrders((current) => current.map((item) => item.id === order.id ? { ...item, status: 'CANCELLED' } : item))
@@ -155,6 +173,7 @@ export function OrdersPage() {
       dataVersionRef.current += 1
       setOrders((current) => current.map((item) => item.id === order.id ? { ...item, status: data.data.status } : item))
       toast.success(data.message)
+      publishDataChange('orders', 'dashboard', 'reports')
       void load(true)
     } catch (error) {
       dataVersionRef.current += 1
@@ -162,6 +181,7 @@ export function OrdersPage() {
       toast.error(getErrorMessage(error))
       void load(true)
     } finally {
+      busyRef.current = ''
       setBusy('')
     }
   }

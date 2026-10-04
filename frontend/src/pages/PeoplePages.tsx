@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { Plus, Search, ShieldCheck, Star, Trash2, UserCheck, UserX } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { api, getErrorMessage } from '../lib/api'
 import { formatAppDate } from '../lib/dateTime'
+import { publishDataChange, subscribeDataChanges } from '../lib/liveUpdates'
+import { createRequestGate } from '../lib/requestGate'
 import type { ApiResponse, Role } from '../types'
 
 interface MemberRow {
@@ -30,33 +32,56 @@ export function MembersPage() {
   const { user } = useAuth()
   const [rows, setRows] = useState<MemberRow[]>([])
   const [query, setQuery] = useState('')
+  const [busy, setBusy] = useState('')
+  const busyRef = useRef(false)
+  const [requestGate] = useState(createRequestGate)
   const owner = user?.roles.includes('OWNER')
 
-  const load = useCallback(() => api.get<ApiResponse<MemberRow[]>>('/users/members')
-    .then(({ data }) => setRows(data.data))
-    .catch((error) => toast.error(getErrorMessage(error))), [])
+  const load = useCallback(async (silent = false) => {
+    const token = requestGate.begin()
+    try {
+      const { data } = await api.get<ApiResponse<MemberRow[]>>('/users/members')
+      if (requestGate.canApply(token)) setRows(data.data)
+    } catch (error) {
+      if (!silent) toast.error(getErrorMessage(error))
+    }
+  }, [requestGate])
 
+  /* oxlint-disable react/set-state-in-effect -- member list is synchronized from the server */
   useEffect(() => {
     void load()
-    const timer = window.setInterval(() => { if (!document.hidden) void load() }, 15_000)
-    const refresh = () => { if (!document.hidden) void load() }
+    const timer = window.setInterval(() => { if (!document.hidden) void load(true) }, 30_000)
+    const refresh = () => { if (!document.hidden) void load(true) }
+    const unsubscribe = subscribeDataChanges(['people', 'profile'], refresh)
     window.addEventListener('focus', refresh)
     document.addEventListener('visibilitychange', refresh)
     return () => {
       window.clearInterval(timer)
+      unsubscribe()
       window.removeEventListener('focus', refresh)
       document.removeEventListener('visibilitychange', refresh)
     }
   }, [load])
+  /* oxlint-enable react/set-state-in-effect */
 
   const remove = async (member: MemberRow) => {
     if (!window.confirm(`Xóa tài khoản ${member.fullName} (${member.email})? Hành động này không thể hoàn tác.`)) return
+    if (busyRef.current) return
+    busyRef.current = true
+    setBusy(member.id)
+    requestGate.invalidate()
+    setRows((current) => current.filter((item) => item.id !== member.id))
     try {
       const { data } = await api.delete<ApiResponse<unknown>>(`/users/members/${member.id}`)
+      requestGate.invalidate()
       toast.success(data.message)
-      await load()
+      publishDataChange('people', 'dashboard')
     } catch (error) {
       toast.error(getErrorMessage(error))
+      void load(true)
+    } finally {
+      busyRef.current = false
+      setBusy('')
     }
   }
 
@@ -78,7 +103,7 @@ export function MembersPage() {
           <td>{item.email}<small>{item.phone || 'Chưa có số điện thoại'}</small></td>
           <td>{item.memberProfile?.memberships?.length || 0} Gym · {item.memberProfile?.ptPackages?.length || 0} PT</td>
           <td><span className={`status ${item.status === 'ACTIVE' ? 'paid' : 'cancelled'}`}>{item.status === 'ACTIVE' ? 'Hoạt động' : item.status === 'UNVERIFIED' ? 'Chưa xác thực' : 'Tạm khóa'}</span></td>
-          {owner && <td><button className="icon-action bad" title="Xóa tài khoản" aria-label={`Xóa tài khoản ${item.fullName}`} onClick={() => void remove(item)}><Trash2 /></button></td>}
+          {owner && <td><button className="icon-action bad" disabled={busy === item.id} title="Xóa tài khoản" aria-label={`Xóa tài khoản ${item.fullName}`} onClick={() => void remove(item)}><Trash2 /></button></td>}
         </tr>)}
       </tbody></table></div>
     </div>
@@ -89,25 +114,37 @@ export function StaffPage() {
   const [rows, setRows] = useState<StaffRow[]>([])
   const [show, setShow] = useState(false)
   const [busy, setBusy] = useState('')
+  const busyRef = useRef(false)
+  const [requestGate] = useState(createRequestGate)
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ACTIVE')
   const [sort, setSort] = useState<'NAME' | 'RATING' | 'REVIEWS'>('NAME')
 
-  const load = useCallback(() => api.get<ApiResponse<StaffRow[]>>('/users/staff')
-    .then(({ data }) => setRows(data.data))
-    .catch((error) => toast.error(getErrorMessage(error))), [])
+  const load = useCallback(async (silent = false) => {
+    const token = requestGate.begin()
+    try {
+      const { data } = await api.get<ApiResponse<StaffRow[]>>('/users/staff')
+      if (requestGate.canApply(token)) setRows(data.data)
+    } catch (error) {
+      if (!silent) toast.error(getErrorMessage(error))
+    }
+  }, [requestGate])
 
+  /* oxlint-disable react/set-state-in-effect -- staff list is synchronized from the server */
   useEffect(() => {
     void load()
-    const timer = window.setInterval(() => { if (!document.hidden) void load() }, 15_000)
-    const refresh = () => { if (!document.hidden) void load() }
+    const timer = window.setInterval(() => { if (!document.hidden) void load(true) }, 30_000)
+    const refresh = () => { if (!document.hidden) void load(true) }
+    const unsubscribe = subscribeDataChanges(['people', 'reviews'], refresh)
     window.addEventListener('focus', refresh)
     document.addEventListener('visibilitychange', refresh)
     return () => {
       window.clearInterval(timer)
+      unsubscribe()
       window.removeEventListener('focus', refresh)
       document.removeEventListener('visibilitychange', refresh)
     }
   }, [load])
+  /* oxlint-enable react/set-state-in-effect */
 
   const visible = useMemo(() => rows
     .filter((staff) => statusFilter === 'ALL' || staff.status === statusFilter)
@@ -126,14 +163,21 @@ export function StaffPage() {
     const nextStatus = staff.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE'
     const action = nextStatus === 'INACTIVE' ? 'cho nghỉ việc' : 'khôi phục tài khoản'
     if (!window.confirm(`Bạn muốn ${action} cho ${staff.fullName}?`)) return
+    if (busyRef.current) return
+    busyRef.current = true
     setBusy(staff.id)
+    requestGate.invalidate()
     try {
       const { data } = await api.patch<ApiResponse<{ status: StaffRow['status'] }>>(`/users/${staff.id}/status`, { status: nextStatus })
+      requestGate.invalidate()
       setRows((current) => current.map((item) => item.id === staff.id ? { ...item, status: data.data.status } : item))
       toast.success(nextStatus === 'INACTIVE' ? 'Đã cho nhân viên nghỉ việc và khóa quyền đăng nhập.' : 'Đã khôi phục tài khoản nhân viên.')
+      publishDataChange('people', 'reviews', 'schedule', 'dashboard')
     } catch (error) {
       toast.error(getErrorMessage(error))
+      void load(true)
     } finally {
+      busyRef.current = false
       setBusy('')
     }
   }
@@ -142,7 +186,7 @@ export function StaffPage() {
     <Header eyebrow="ĐỘI NGŨ VẬN HÀNH" title="Nhân sự" text="Cho nghỉ việc sẽ khóa đăng nhập nhưng vẫn giữ lịch sử giao dịch và lịch PT.">
       <button className="btn btn-primary" onClick={() => setShow(!show)}><Plus /> Thêm nhân sự</button>
     </Header>
-    {show && <StaffForm onDone={() => { setShow(false); void load() }} />}
+    {show && <StaffForm onDone={() => { requestGate.invalidate(); setShow(false); void load() }} />}
     <div className="card staff-directory-tools">
       <div className="booking-filters" role="group" aria-label="Lọc trạng thái nhân viên">
         <button className={statusFilter === 'ACTIVE' ? 'active' : ''} onClick={() => setStatusFilter('ACTIVE')}>Còn làm việc<span>{rows.filter((item) => item.status === 'ACTIVE').length}</span></button>
@@ -172,16 +216,21 @@ export function StaffPage() {
 function StaffForm({ onDone }: { onDone: () => void }) {
   const [form, setForm] = useState({ fullName: '', email: '', password: '', role: 'RECEPTIONIST', specialties: '' })
   const [busy, setBusy] = useState(false)
+  const busyRef = useRef(false)
   const submit = async (event: FormEvent) => {
     event.preventDefault()
+    if (busyRef.current) return
+    busyRef.current = true
     setBusy(true)
     try {
       const { data } = await api.post<ApiResponse<unknown>>('/users/staff', form)
       toast.success(data.message)
+      publishDataChange('people', 'reviews')
       onDone()
     } catch (error) {
       toast.error(getErrorMessage(error))
     } finally {
+      busyRef.current = false
       setBusy(false)
     }
   }

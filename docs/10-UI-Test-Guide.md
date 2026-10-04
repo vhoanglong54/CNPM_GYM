@@ -38,6 +38,14 @@ Chỉ tiếp tục khi `docker compose ps` hiển thị `gym-management-db` ở 
 - Mỗi máy hoặc mỗi hồ sơ trình duyệt chỉ nên đăng nhập một vai trò để quan sát đồng thời.
 - Nếu cần dựng lại các bản ghi mẫu, chạy `npm run db:seed`. Lệnh có thể chạy lại và không tạo trùng các bản ghi seed cố định.
 
+### 1.3 Kiểm tra đồng bộ mà không tải lại trang
+
+- Thanh trên cùng hiển thị **Đang đồng bộ...** khi còn request, **Đã đồng bộ** khi hoàn tất và **Mất kết nối** khi trình duyệt offline.
+- Sau thao tác thành công, giao diện hiện tại phải đổi trạng thái ngay; không bấm reload trình duyệt.
+- Các tab Titan Gym khác cùng trình duyệt nhận tín hiệu thay đổi và tự lấy dữ liệu phù hợp với tài khoản đang đăng nhập trên chính tab đó.
+- Tab ẩn không gửi polling nền liên tục. Khi quay lại tab, dữ liệu tự làm mới; polling 30 giây chỉ là dự phòng cho thay đổi không phát sinh từ giao diện.
+- Phản hồi tải cũ không được phép ghi đè kết quả vừa thanh toán, hủy đơn, đổi lịch, check-in, sửa nhân sự, gửi đánh giá hoặc đọc thông báo.
+
 ## 2. Tài khoản và dữ liệu có sẵn
 
 | Vai trò | Tài khoản | Dùng để kiểm thử |
@@ -83,7 +91,7 @@ Production đã tắt OTP development và sử dụng SMTP đã cấu hình. V�
 2. Chọn một gói Gym hoặc gói PT; kiểm tra hộp tóm tắt tên gói, quyền lợi và số tiền xuất hiện nhưng chưa tạo đơn.
 3. Chọn **Xác nhận mua gói** một lần; thử bấm nhanh nhiều lần và bảo đảm chỉ tạo đúng một đơn.
 4. Máy A được chuyển sang **Giao dịch**, đơn mới được làm nổi bật.
-5. Máy B cũng mở **Giao dịch** và chờ đồng bộ hoặc bấm **Làm mới**.
+5. Máy B cũng mở **Giao dịch**; đơn phải tự xuất hiện, không reload trình duyệt.
 
 Kết quả mong đợi:
 
@@ -97,7 +105,7 @@ Kết quả mong đợi:
 1. Trên máy B, tìm đơn chưa có yêu cầu chuyển khoản và chọn **Thu tiền mặt**.
 2. Xác nhận hộp thoại.
 3. Quan sát tiến trình chuyển từ **Đang chờ** sang **Hoàn tất**.
-4. Trên máy A chờ tối đa 5 giây; trạng thái phải đổi thành **Đã thanh toán**.
+4. Trên máy A, trạng thái phải tự đổi thành **Đã thanh toán** mà không reload trình duyệt.
 5. Máy A mở **Hồ sơ** để kiểm tra gói vừa mua đã xuất hiện trong quyền lợi.
 6. Ở cả hai máy, chọn **Phiếu thu** để kiểm tra PDF.
 
@@ -147,7 +155,7 @@ Kết quả mong đợi: chỉ PT có thể tạo ca của chính mình; thời 
 1. Ở máy khác đăng nhập `hoangnam@gym.local`.
 2. Vào **Lịch PT**, chọn ngày muốn tập và thử sắp xếp theo **Lịch trống sớm nhất**, **Đánh giá cao nhất** hoặc **Nhiều lượt đánh giá nhất**.
 3. Chọn một ca trống, chọn gói `PT 12 Buổi`, nhập ghi chú nếu cần và gửi yêu cầu.
-4. Quay lại máy PT và bấm làm mới trang nếu cần.
+4. Quay lại máy PT; yêu cầu phải tự xuất hiện mà không reload trình duyệt.
 
 Kết quả mong đợi:
 

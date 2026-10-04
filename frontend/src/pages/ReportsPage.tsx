@@ -3,6 +3,8 @@ import { Banknote, BarChart3, Clock3, Dumbbell, RefreshCw, ShieldCheck, Star } f
 import toast from 'react-hot-toast'
 import { api, getErrorMessage, money } from '../lib/api'
 import { formatAppDateTime } from '../lib/dateTime'
+import { subscribeDataChanges } from '../lib/liveUpdates'
+import { createRequestGate } from '../lib/requestGate'
 import type { ApiResponse } from '../types'
 
 interface OperationsReport {
@@ -47,15 +49,32 @@ interface OperationsReport {
 
 export function ReportsPage() {
   const [report, setReport] = useState<OperationsReport | null>(null)
-  const load = useCallback((silent = false) => api.get<ApiResponse<OperationsReport>>('/reports/operations')
-    .then(({ data }) => setReport(data.data))
-    .catch((error) => { if (!silent) toast.error(getErrorMessage(error)) }), [])
-  /* oxlint-disable-next-line react/set-state-in-effect -- reports stay synchronized with transactions and PT actions */
+  const [requestGate] = useState(createRequestGate)
+  const load = useCallback(async (silent = false) => {
+    const token = requestGate.begin()
+    try {
+      const { data } = await api.get<ApiResponse<OperationsReport>>('/reports/operations')
+      if (requestGate.canApply(token)) setReport(data.data)
+    } catch (error) {
+      if (!silent) toast.error(getErrorMessage(error))
+    }
+  }, [requestGate])
+  /* oxlint-disable react/set-state-in-effect -- reports stay synchronized with transactions and PT actions */
   useEffect(() => {
     void load()
-    const timer = window.setInterval(() => void load(true), 10_000)
-    return () => window.clearInterval(timer)
+    const refresh = () => { if (!document.hidden) void load(true) }
+    const timer = window.setInterval(refresh, 30_000)
+    const unsubscribe = subscribeDataChanges(['reports', 'orders', 'schedule', 'checkins', 'reviews'], refresh)
+    window.addEventListener('focus', refresh)
+    document.addEventListener('visibilitychange', refresh)
+    return () => {
+      window.clearInterval(timer)
+      unsubscribe()
+      window.removeEventListener('focus', refresh)
+      document.removeEventListener('visibilitychange', refresh)
+    }
   }, [load])
+  /* oxlint-enable react/set-state-in-effect */
   if (!report) return <div className="loading-card">Đang tổng hợp báo cáo...</div>
 
   return <>

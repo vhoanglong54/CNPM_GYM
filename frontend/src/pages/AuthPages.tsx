@@ -1,9 +1,10 @@
-import { useState, type FormEvent } from 'react'
+import { useRef, useState, type FormEvent } from 'react'
 import { ArrowRight, Dumbbell, Eye, EyeOff, LockKeyhole, Mail, ShieldCheck } from 'lucide-react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { useAuth } from '../context/AuthContext'
 import { api, getErrorMessage } from '../lib/api'
+import { publishDataChange } from '../lib/liveUpdates'
 import type { ApiResponse } from '../types'
 
 function AuthBrand() {
@@ -50,12 +51,16 @@ export function LoginPage() {
   const navigate = useNavigate()
   const [show, setShow] = useState(false)
   const [busy, setBusy] = useState(false)
+  const busyRef = useRef(false)
   const [form, setForm] = useState({ email: 'vhoanglong54@gmail.com', password: '' })
   const submit = async (event: FormEvent) => {
-    event.preventDefault(); setBusy(true)
+    event.preventDefault()
+    if (busyRef.current) return
+    busyRef.current = true
+    setBusy(true)
     try { await login(form.email, form.password); toast.success('Đăng nhập thành công.'); navigate('/') }
     catch (error) { toast.error(getErrorMessage(error)) }
-    finally { setBusy(false) }
+    finally { busyRef.current = false; setBusy(false) }
   }
   return <div className="auth-layout"><AuthBrand/><section className="auth-form-panel"><div className="auth-form-wrap"><span className="eyebrow dark">CHÀO MỪNG TRỞ LẠI</span><h2>Đăng nhập hệ thống</h2><form onSubmit={submit} className="form-stack"><label>Email<div className="input-icon"><Mail/><input type="email" value={form.email} onChange={(e) => setForm({...form, email:e.target.value})} placeholder="you@example.com" required/></div></label><PasswordInput label="Mật khẩu" value={form.password} visible={show} onChange={(password) => setForm({...form, password})} onToggle={() => setShow(!show)} autoComplete="current-password"/><button className="btn btn-primary btn-wide" disabled={busy}>{busy ? <span className="spinner"/> : <>Đăng nhập <ArrowRight size={19}/></>}</button></form><div className="auth-divider"><span>Hội viên mới?</span></div><Link className="btn btn-ghost btn-wide" to="/register">Tạo tài khoản hội viên</Link><div className="security-note"><ShieldCheck/><span>Dữ liệu được bảo vệ bằng phân quyền và xác thực ở máy chủ.</span></div></div></section></div>
 }
@@ -63,6 +68,7 @@ export function LoginPage() {
 export function RegisterPage() {
   const navigate = useNavigate()
   const [busy, setBusy] = useState(false)
+  const busyRef = useRef(false)
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmation, setShowConfirmation] = useState(false)
   const [form, setForm] = useState({ fullName: '', email: '', phone: '', password: '', confirmPassword: '' })
@@ -74,15 +80,19 @@ export function RegisterPage() {
       toast.error('Mật khẩu nhập lại chưa khớp.')
       return
     }
+    if (busyRef.current) return
+    busyRef.current = true
     setBusy(true)
     try {
       const { confirmPassword: _confirmPassword, ...payload } = form
       const { data } = await api.post<ApiResponse<{ email: string }>>('/auth/register', payload)
       toast.success(data.message)
+      publishDataChange('people')
       navigate(`/verify?email=${encodeURIComponent(form.email)}`)
     } catch (error) {
       toast.error(getErrorMessage(error))
     } finally {
+      busyRef.current = false
       setBusy(false)
     }
   }
@@ -91,8 +101,43 @@ export function RegisterPage() {
 }
 
 export function VerifyPage() {
-  const [params]=useSearchParams();const navigate=useNavigate();const email=params.get('email')||'';const [otp,setOtp]=useState('');const [busy,setBusy]=useState(false)
-  const verify=async(e:FormEvent)=>{e.preventDefault();setBusy(true);try{const {data}=await api.post<ApiResponse<unknown>>('/auth/verify-email',{email,otp});toast.success(data.message);navigate('/login')}catch(error){toast.error(getErrorMessage(error))}finally{setBusy(false)}}
-  const resend=async()=>{try{const {data}=await api.post<ApiResponse<unknown>>('/auth/resend-otp',{email});toast.success(data.message)}catch(error){toast.error(getErrorMessage(error))}}
-  return <div className="auth-layout"><AuthBrand/><section className="auth-form-panel"><div className="auth-form-wrap"><span className="eyebrow dark">XÁC THỰC EMAIL</span><h2>Nhập mã gồm 6 chữ số</h2><p>Mã xác thực đã được gửi tới <b>{email}</b>.</p><form onSubmit={verify} className="form-stack"><label>Mã OTP<input className="otp-input" inputMode="numeric" maxLength={6} value={otp} onChange={e=>setOtp(e.target.value.replace(/\D/g,''))} placeholder="000000" required/></label><button className="btn btn-primary btn-wide" disabled={busy||otp.length!==6}>{busy?'Đang xác thực...':'Xác thực tài khoản'}</button></form><button className="text-link link-button" onClick={resend}>Gửi lại mã xác thực</button></div></section></div>
+  const [params] = useSearchParams()
+  const navigate = useNavigate()
+  const email = params.get('email') || ''
+  const [otp, setOtp] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [resending, setResending] = useState(false)
+  const busyRef = useRef(false)
+  const verify = async (event: FormEvent) => {
+    event.preventDefault()
+    if (busyRef.current) return
+    busyRef.current = true
+    setBusy(true)
+    try {
+      const { data } = await api.post<ApiResponse<unknown>>('/auth/verify-email', { email, otp })
+      toast.success(data.message)
+      publishDataChange('people')
+      navigate('/login')
+    } catch (error) {
+      toast.error(getErrorMessage(error))
+    } finally {
+      busyRef.current = false
+      setBusy(false)
+    }
+  }
+  const resend = async () => {
+    if (busyRef.current) return
+    busyRef.current = true
+    setResending(true)
+    try {
+      const { data } = await api.post<ApiResponse<unknown>>('/auth/resend-otp', { email })
+      toast.success(data.message)
+    } catch (error) {
+      toast.error(getErrorMessage(error))
+    } finally {
+      busyRef.current = false
+      setResending(false)
+    }
+  }
+  return <div className="auth-layout"><AuthBrand/><section className="auth-form-panel"><div className="auth-form-wrap"><span className="eyebrow dark">XÁC THỰC EMAIL</span><h2>Nhập mã gồm 6 chữ số</h2><p>Mã xác thực đã được gửi tới <b>{email}</b>.</p><form onSubmit={verify} className="form-stack"><label>Mã OTP<input className="otp-input" inputMode="numeric" maxLength={6} value={otp} onChange={event => setOtp(event.target.value.replace(/\D/g,''))} placeholder="000000" required/></label><button className="btn btn-primary btn-wide" disabled={busy||resending||otp.length!==6}>{busy?'Đang xác thực...':'Xác thực tài khoản'}</button></form><button className="text-link link-button" disabled={busy || resending} onClick={() => void resend()}>{resending ? 'Đang gửi lại...' : 'Gửi lại mã xác thực'}</button></div></section></div>
 }

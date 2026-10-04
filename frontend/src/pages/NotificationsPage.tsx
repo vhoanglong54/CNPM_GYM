@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Bell, CheckCheck, Circle } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { api, getErrorMessage } from '../lib/api'
 import { formatAppDateTime } from '../lib/dateTime'
+import { publishDataChange, subscribeDataChanges } from '../lib/liveUpdates'
+import { createRequestGate } from '../lib/requestGate'
 import type { ApiResponse } from '../types'
 
 interface NotificationItem {
@@ -22,40 +24,73 @@ interface NotificationResult {
 export function NotificationsPage() {
   const [result, setResult] = useState<NotificationResult>({ items: [], unreadCount: 0 })
   const [busy, setBusy] = useState('')
+  const busyRef = useRef(false)
+  const [requestGate] = useState(createRequestGate)
 
-  const load = (silent = false) => api.get<ApiResponse<NotificationResult>>('/notifications')
-    .then(({ data }) => setResult(data.data))
-    .catch((error) => { if (!silent) toast.error(getErrorMessage(error)) })
+  const load = useCallback(async (silent = false) => {
+    const token = requestGate.begin()
+    try {
+      const { data } = await api.get<ApiResponse<NotificationResult>>('/notifications')
+      if (requestGate.canApply(token)) setResult(data.data)
+    } catch (error) {
+      if (!silent) toast.error(getErrorMessage(error))
+    }
+  }, [requestGate])
 
   /* oxlint-disable-next-line react-hooks/exhaustive-deps -- polling intentionally reuses load */
   useEffect(() => {
     void load()
-    const timer = window.setInterval(() => void load(true), 15_000)
-    return () => window.clearInterval(timer)
-  }, [])
+    const refresh = () => { if (!document.hidden) void load(true) }
+    const timer = window.setInterval(refresh, 30_000)
+    const unsubscribe = subscribeDataChanges(['notifications'], refresh)
+    window.addEventListener('focus', refresh)
+    document.addEventListener('visibilitychange', refresh)
+    return () => {
+      window.clearInterval(timer)
+      unsubscribe()
+      window.removeEventListener('focus', refresh)
+      document.removeEventListener('visibilitychange', refresh)
+    }
+  }, [load])
 
   const read = async (item: NotificationItem) => {
-    if (item.readAt) return
+    if (item.readAt || busyRef.current) return
+    busyRef.current = true
     setBusy(item.id)
+    requestGate.invalidate()
+    setResult((current) => ({
+      unreadCount: Math.max(0, current.unreadCount - 1),
+      items: current.items.map((entry) => entry.id === item.id ? { ...entry, readAt: new Date().toISOString() } : entry),
+    }))
     try {
       await api.patch(`/notifications/${item.id}/read`)
-      await load(true)
+      requestGate.invalidate()
+      publishDataChange('notifications')
     } catch (error) {
       toast.error(getErrorMessage(error))
+      void load(true)
     } finally {
+      busyRef.current = false
       setBusy('')
     }
   }
 
   const readAll = async () => {
+    if (busyRef.current) return
+    busyRef.current = true
     setBusy('all')
+    requestGate.invalidate()
+    setResult((current) => ({ unreadCount: 0, items: current.items.map((item) => ({ ...item, readAt: item.readAt ?? new Date().toISOString() })) }))
     try {
       const { data } = await api.patch<ApiResponse<unknown>>('/notifications/read-all')
+      requestGate.invalidate()
       toast.success(data.message)
-      await load(true)
+      publishDataChange('notifications')
     } catch (error) {
       toast.error(getErrorMessage(error))
+      void load(true)
     } finally {
+      busyRef.current = false
       setBusy('')
     }
   }
