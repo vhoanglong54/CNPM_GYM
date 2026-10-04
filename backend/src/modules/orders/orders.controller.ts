@@ -39,7 +39,7 @@ export class OrdersController {
   ) {
     return this.wrap(
       this.service.pay(id, dto, user),
-      'Đã ghi nhận thao tác thanh toán.',
+      'Đã gửi yêu cầu thanh toán để Lễ tân/Chủ phòng xác nhận.',
     );
   }
   @Patch(':orderId/payments/:paymentId/confirm') confirmPayment(

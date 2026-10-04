@@ -1,6 +1,7 @@
 import {
   MembershipType,
   OrderStatus,
+  PaymentMethod,
   PaymentStatus,
   Prisma,
   ProductType,
@@ -40,6 +41,88 @@ function pendingPayment() {
     },
   };
 }
+
+function payableOrder() {
+  return {
+    id: 'order-1',
+    memberId: memberUser.id,
+    orderNumber: 'ORD-TEST-1',
+    status: OrderStatus.PENDING,
+    totalAmount: 690_000,
+    items: [{ id: 'item-1' }],
+    member: { memberProfile: { id: memberUser.memberProfileId } },
+  };
+}
+
+describe('OrdersService payment request', () => {
+  it('không cho nhân viên tự thu tiền khi Hội viên chưa xác nhận thanh toán', async () => {
+    const transaction = vi.fn();
+    const service = new OrdersService(
+      {
+        order: { findUnique: vi.fn().mockResolvedValue(payableOrder()) },
+        $transaction: transaction,
+      } as never,
+      {} as never,
+    );
+
+    await expect(
+      service.pay('order-1', { method: PaymentMethod.CASH }, staffUser),
+    ).rejects.toMatchObject({
+      errorCode: 'PAYMENT_MEMBER_CONFIRMATION_REQUIRED',
+    });
+    expect(transaction).not.toHaveBeenCalled();
+  });
+
+  it.each([PaymentMethod.TRANSFER_DEMO, PaymentMethod.CASH])(
+    'chỉ tạo yêu cầu chờ duyệt khi Hội viên xác nhận bằng %s',
+    async (method) => {
+      const createdPayment = {
+        id: 'payment-new',
+        orderId: 'order-1',
+        method,
+        status: PaymentStatus.AWAITING_CONFIRMATION,
+        amount: 690_000,
+        expiresAt: new Date(Date.now() + 60_000),
+      };
+      const transactionClient = {
+        payment: {
+          updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+          findFirst: vi.fn().mockResolvedValue(null),
+          create: vi.fn().mockResolvedValue(createdPayment),
+        },
+        order: { findUniqueOrThrow: vi.fn().mockResolvedValue(payableOrder()) },
+        auditLog: { create: vi.fn().mockResolvedValue({}) },
+      };
+      const notifyRoles = vi.fn().mockResolvedValue(undefined);
+      const service = new OrdersService(
+        {
+          order: { findUnique: vi.fn().mockResolvedValue(payableOrder()) },
+          $transaction: vi.fn((callback) => callback(transactionClient)),
+        } as never,
+        { notifyRoles } as never,
+      );
+
+      const result = await service.pay('order-1', { method }, memberUser);
+
+      expect(result).toMatchObject({
+        orderId: 'order-1',
+        status: OrderStatus.PENDING,
+        confirmationRequired: true,
+        payment: {
+          method,
+          status: PaymentStatus.AWAITING_CONFIRMATION,
+        },
+      });
+      expect(transactionClient.payment.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          method,
+          status: PaymentStatus.AWAITING_CONFIRMATION,
+        }),
+      });
+      expect(notifyRoles).toHaveBeenCalledOnce();
+    },
+  );
+});
 
 describe('OrdersService payment confirmation', () => {
   it('tự thử lại transaction khi database báo xung đột tạm thời', async () => {

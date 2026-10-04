@@ -189,28 +189,11 @@ export class OrdersService {
         'Đơn hàng không hợp lệ để thanh toán.',
       );
 
-    const isStaff =
-      user.roles.includes(RoleCode.OWNER) ||
-      user.roles.includes(RoleCode.RECEPTIONIST);
-    if (!isStaff && order.memberId !== user.id)
+    if (order.memberId !== user.id)
       throw new ApiError(
-        'FORBIDDEN',
-        'Bạn không có quyền thực hiện thao tác này.',
+        'PAYMENT_MEMBER_CONFIRMATION_REQUIRED',
+        'Hội viên sở hữu đơn phải xác nhận thanh toán trước khi nhân viên có thể thu tiền.',
         HttpStatus.FORBIDDEN,
-      );
-    if (!isStaff && dto.method !== PaymentMethod.TRANSFER_DEMO)
-      throw new ApiError(
-        'PAYMENT_METHOD_FORBIDDEN',
-        'Hội viên chỉ có thể thanh toán bằng chuyển khoản.',
-      );
-    if (
-      isStaff &&
-      dto.method === PaymentMethod.TRANSFER_DEMO &&
-      order.memberId !== user.id
-    )
-      throw new ApiError(
-        'PAYMENT_METHOD_FORBIDDEN',
-        'Nhân viên xác nhận thu tại quầy bằng phương thức tiền mặt.',
       );
     if (!order.member.memberProfile)
       throw new ApiError(
@@ -218,8 +201,7 @@ export class OrdersService {
         'Đơn hàng không có hồ sơ hội viên hợp lệ.',
       );
 
-    if (!isStaff) return this.requestTransferConfirmation(orderId, user);
-    return this.collectCash(orderId, user);
+    return this.requestPaymentConfirmation(orderId, dto.method, user);
   }
 
   async confirmPayment(orderId: string, paymentId: string, user: AuthUser) {
@@ -288,7 +270,7 @@ export class OrdersService {
         await this.writePaymentAudit(
           tx,
           user.id,
-          'CONFIRM_TRANSFER_PAYMENT',
+          'CONFIRM_PAYMENT',
           orderId,
           payment.id,
           payment.amount.toString(),
@@ -305,7 +287,7 @@ export class OrdersService {
           payment: paidPayment,
           receipt: paidPayment.receipt,
         };
-      }, 'confirm transfer payment');
+      }, 'confirm payment');
     } catch (error) {
       if (!this.isRetryableTransactionError(error)) throw error;
       try {
@@ -369,7 +351,7 @@ export class OrdersService {
         await tx.auditLog.create({
           data: {
             actorId: user.id,
-            action: 'REJECT_TRANSFER_PAYMENT',
+            action: 'REJECT_PAYMENT',
             entityType: 'Payment',
             entityId: payment.id,
             metadata: { orderId, reason },
@@ -387,7 +369,11 @@ export class OrdersService {
     );
   }
 
-  private async requestTransferConfirmation(orderId: string, user: AuthUser) {
+  private async requestPaymentConfirmation(
+    orderId: string,
+    method: PaymentMethod,
+    user: AuthUser,
+  ) {
     return this.prisma.$transaction(
       async (tx) => {
         const now = new Date();
@@ -417,7 +403,7 @@ export class OrdersService {
         if (awaiting)
           throw new ApiError(
             'PAYMENT_ALREADY_AWAITING',
-            'Đơn hàng đã có yêu cầu chuyển khoản đang chờ nhân viên xác nhận.',
+            'Đơn hàng đã có yêu cầu thanh toán đang chờ nhân viên xác nhận.',
             HttpStatus.CONFLICT,
           );
         const payment = await tx.payment.create({
@@ -425,7 +411,7 @@ export class OrdersService {
             orderId,
             transactionCode: this.createTransactionCode(),
             amount: order.totalAmount,
-            method: PaymentMethod.TRANSFER_DEMO,
+            method,
             status: PaymentStatus.AWAITING_CONFIRMATION,
             requestedAt: now,
             expiresAt: new Date(now.getTime() + PAYMENT_CONFIRMATION_TTL_MS),
@@ -434,20 +420,25 @@ export class OrdersService {
         await tx.auditLog.create({
           data: {
             actorId: user.id,
-            action: 'SUBMIT_TRANSFER_PAYMENT',
+            action: 'SUBMIT_PAYMENT_CONFIRMATION',
             entityType: 'Payment',
             entityId: payment.id,
-            metadata: { orderId, expiresAt: payment.expiresAt },
+            metadata: { orderId, method, expiresAt: payment.expiresAt },
           },
         });
+        const isCash = method === PaymentMethod.CASH;
         await this.notifications.notifyRoles(
           tx,
           [RoleCode.OWNER, RoleCode.RECEPTIONIST],
           {
             type: 'PAYMENT_REQUESTED',
-            title: 'Chuyển khoản chờ xác nhận',
-            message: `Đơn ${order.orderNumber} vừa được Hội viên báo đã chuyển khoản.`,
-            metadata: { orderId, paymentId: payment.id },
+            title: isCash
+              ? 'Tiền mặt chờ xác nhận thu'
+              : 'Chuyển khoản chờ xác nhận',
+            message: isCash
+              ? `Hội viên của đơn ${order.orderNumber} đã xác nhận thanh toán tiền mặt tại quầy.`
+              : `Hội viên của đơn ${order.orderNumber} đã xác nhận chuyển khoản.`,
+            metadata: { orderId, paymentId: payment.id, method },
           },
         );
         return {
@@ -455,72 +446,6 @@ export class OrdersService {
           status: OrderStatus.PENDING,
           payment,
           confirmationRequired: true,
-        };
-      },
-      { isolationLevel: 'Serializable' },
-    );
-  }
-
-  private async collectCash(orderId: string, user: AuthUser) {
-    return this.prisma.$transaction(
-      async (tx) => {
-        const order = await tx.order.findUniqueOrThrow({
-          where: { id: orderId },
-        });
-        if (order.status !== OrderStatus.PENDING)
-          throw new ApiError(
-            'ORDER_NOT_PAYABLE',
-            'Đơn hàng không còn ở trạng thái chờ thanh toán.',
-            HttpStatus.CONFLICT,
-          );
-        const awaiting = await tx.payment.findFirst({
-          where: {
-            orderId,
-            status: PaymentStatus.AWAITING_CONFIRMATION,
-          },
-        });
-        if (awaiting)
-          throw new ApiError(
-            'PAYMENT_ALREADY_AWAITING',
-            'Đơn hàng đang có chuyển khoản chờ duyệt. Hãy xác nhận hoặc từ chối yêu cầu đó trước.',
-            HttpStatus.CONFLICT,
-          );
-        const now = new Date();
-        const payment = await tx.payment.create({
-          data: {
-            orderId,
-            transactionCode: this.createTransactionCode(),
-            amount: order.totalAmount,
-            method: PaymentMethod.CASH,
-            status: PaymentStatus.PAID,
-            requestedAt: now,
-            paidAt: now,
-            confirmedAt: now,
-            confirmedById: user.id,
-            receipt: { create: { receiptNumber: this.createReceiptNumber() } },
-          },
-          include: { receipt: true },
-        });
-        await this.activateOrderEntitlements(tx, orderId);
-        await this.writePaymentAudit(
-          tx,
-          user.id,
-          'COLLECT_CASH_PAYMENT',
-          orderId,
-          payment.id,
-          order.totalAmount.toString(),
-        );
-        await this.notifications.notifyUsers(tx, [order.memberId], {
-          type: 'CASH_PAYMENT_CONFIRMED',
-          title: 'Đã ghi nhận thanh toán tiền mặt',
-          message: `Đơn ${order.orderNumber} đã được nhân viên xác nhận và kích hoạt quyền lợi.`,
-          metadata: { orderId, paymentId: payment.id },
-        });
-        return {
-          orderId,
-          status: OrderStatus.PAID,
-          payment,
-          receipt: payment.receipt,
         };
       },
       { isolationLevel: 'Serializable' },
