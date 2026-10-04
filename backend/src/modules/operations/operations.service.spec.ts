@@ -73,6 +73,124 @@ describe('OperationsService cancellation', () => {
   });
 });
 
+describe('OperationsService PT completion attendance', () => {
+  const trainerUser = {
+    id: 'trainer-user-1',
+    email: 'trainer@gym.local',
+    fullName: 'Trainer Test',
+    roles: [RoleCode.TRAINER],
+    trainerProfileId: 'trainer-1',
+  };
+
+  function confirmedBooking() {
+    return {
+      id: 'booking-1',
+      slotId: 'slot-1',
+      memberId: 'member-1',
+      memberPtPackageId: 'member-package-1',
+      status: BookingStatus.CONFIRMED,
+      slot: {
+        trainerId: 'trainer-1',
+        startsAt: new Date(Date.now() - 60 * 60 * 1000),
+        endsAt: new Date(Date.now() + 60 * 60 * 1000),
+      },
+    };
+  }
+
+  it('chặn hoàn thành khi Hội viên chưa check-in trước giờ PT', async () => {
+    const booking = confirmedBooking();
+    const prisma = {
+      ptBooking: { findUnique: vi.fn().mockResolvedValue(booking) },
+      checkin: { findFirst: vi.fn().mockResolvedValue(null) },
+      $transaction: vi.fn(),
+    };
+    const service = new OperationsService(prisma as never, {} as never);
+
+    await expect(
+      service.updateBooking(
+        booking.id,
+        { status: BookingStatus.COMPLETED },
+        trainerUser,
+      ),
+    ).rejects.toMatchObject({ errorCode: 'PT_COMPLETION_CHECKIN_REQUIRED' });
+    expect(prisma.checkin.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          memberId: booking.memberId,
+          checkedInAt: expect.objectContaining({
+            lte: booking.slot.startsAt,
+          }),
+        }),
+      }),
+    );
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('cho PT hoàn thành khi Hội viên đã check-in trước giờ tập', async () => {
+    const booking = confirmedBooking();
+    const updatePackage = vi.fn().mockResolvedValue({});
+    const updateBooking = vi.fn().mockResolvedValue({
+      id: booking.id,
+      status: BookingStatus.COMPLETED,
+    });
+    const notifyUsers = vi.fn().mockResolvedValue({ count: 1 });
+    const transactionClient = {
+      ptBooking: {
+        findUniqueOrThrow: vi.fn().mockResolvedValue(booking),
+        update: updateBooking,
+      },
+      memberPtPackage: {
+        findUniqueOrThrow: vi.fn().mockResolvedValue({
+          id: booking.memberPtPackageId,
+          sessionsReserved: 1,
+          sessionsUsed: 0,
+          sessionsTotal: 10,
+        }),
+        update: updatePackage,
+      },
+      auditLog: { create: vi.fn().mockResolvedValue({}) },
+      memberProfile: {
+        findUniqueOrThrow: vi
+          .fn()
+          .mockResolvedValue({ userId: 'member-user-1' }),
+      },
+    };
+    const prisma = {
+      ptBooking: { findUnique: vi.fn().mockResolvedValue(booking) },
+      checkin: {
+        findFirst: vi.fn().mockResolvedValue({ id: 'checkin-1' }),
+      },
+      $transaction: vi.fn((callback) => callback(transactionClient)),
+    };
+    const service = new OperationsService(
+      prisma as never,
+      { notifyUsers } as never,
+    );
+
+    const result = await service.updateBooking(
+      booking.id,
+      { status: BookingStatus.COMPLETED },
+      trainerUser,
+    );
+
+    expect(result).toMatchObject({ status: BookingStatus.COMPLETED });
+    expect(updatePackage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: {
+          sessionsUsed: { increment: 1 },
+          sessionsReserved: { decrement: 1 },
+        },
+      }),
+    );
+    expect(updateBooking).toHaveBeenCalledOnce();
+    expect(notifyUsers).toHaveBeenCalledWith(
+      transactionClient,
+      ['member-user-1'],
+      expect.objectContaining({ type: 'BOOKING_COMPLETED' }),
+    );
+  });
+});
+
 describe('OperationsService check-in', () => {
   const staffUser = {
     id: 'reception-user-1',
@@ -273,6 +391,7 @@ describe('OperationsService check-in', () => {
           ],
         }),
       },
+      ptBooking: { findMany: vi.fn().mockResolvedValue([appointment]) },
     };
     const service = new OperationsService(prisma as never, {} as never);
 
@@ -284,6 +403,7 @@ describe('OperationsService check-in', () => {
     expect(result).toMatchObject({
       recommendedMembershipId: depletedMembership.id,
       alreadyCheckedIn: true,
+      todayPtAppointments: [{ id: appointment.id }],
       memberships: [
         {
           id: depletedMembership.id,
@@ -291,6 +411,37 @@ describe('OperationsService check-in', () => {
           visitsUsed: 1,
         },
       ],
+    });
+  });
+
+  it('vẫn trả nhắc lịch PT ngay khi quét dù không có gói Gym', async () => {
+    const prisma = {
+      memberProfile: {
+        findUnique: vi.fn().mockResolvedValue({
+          ...member,
+          user: {
+            fullName: member.user.fullName,
+            email: 'member@gym.local',
+            status: 'ACTIVE',
+          },
+          memberships: [],
+          checkins: [],
+        }),
+      },
+      ptBooking: { findMany: vi.fn().mockResolvedValue([appointment]) },
+    };
+    const service = new OperationsService(prisma as never, {} as never);
+
+    const result = await service.checkinEligibility(
+      member.memberCode,
+      staffUser,
+    );
+
+    expect(result).toMatchObject({
+      recommendedMembershipId: null,
+      eligibleForGymCheckin: false,
+      ineligibilityReason: 'Hội viên không có gói Gym đang hiệu lực.',
+      todayPtAppointments: [{ id: appointment.id }],
     });
   });
 });

@@ -313,7 +313,7 @@ export class OperationsService {
         : user.memberProfileId
           ? { memberId: user.memberProfileId }
           : { id: '__none__' };
-    return this.prisma.ptBooking.findMany({
+    const bookings = await this.prisma.ptBooking.findMany({
       where,
       include: {
         slot: {
@@ -331,6 +331,54 @@ export class OperationsService {
         cancellationRequestedBy: { select: { fullName: true, email: true } },
       },
       orderBy: { createdAt: 'desc' },
+    });
+    const completionCandidates = bookings.filter(
+      (booking) => booking.status === BookingStatus.CONFIRMED,
+    );
+    if (!completionCandidates.length)
+      return bookings.map((booking) => ({
+        ...booking,
+        completionCheckinAt: null,
+      }));
+
+    const earliestDayStart = new Date(
+      Math.min(
+        ...completionCandidates.map((booking) =>
+          appDayBounds(booking.slot.startsAt).start.getTime(),
+        ),
+      ),
+    );
+    const latestSlotStart = new Date(
+      Math.max(
+        ...completionCandidates.map((booking) =>
+          booking.slot.startsAt.getTime(),
+        ),
+      ),
+    );
+    const checkins = await this.prisma.checkin.findMany({
+      where: {
+        memberId: {
+          in: [...new Set(completionCandidates.map((item) => item.memberId))],
+        },
+        checkedInAt: { gte: earliestDayStart, lte: latestSlotStart },
+      },
+      select: { memberId: true, checkedInAt: true },
+      orderBy: { checkedInAt: 'asc' },
+    });
+    return bookings.map((booking) => {
+      if (booking.status !== BookingStatus.CONFIRMED)
+        return { ...booking, completionCheckinAt: null };
+      const { start: bookingDayStart } = appDayBounds(booking.slot.startsAt);
+      const completionCheckin = checkins.find(
+        (checkin) =>
+          checkin.memberId === booking.memberId &&
+          checkin.checkedInAt >= bookingDayStart &&
+          checkin.checkedInAt <= booking.slot.startsAt,
+      );
+      return {
+        ...booking,
+        completionCheckinAt: completionCheckin?.checkedInAt ?? null,
+      };
     });
   }
 
@@ -514,6 +562,24 @@ export class OperationsService {
           'BOOKING_NOT_STARTED',
           'Chưa thể hoàn thành buổi tập trước giờ bắt đầu.',
         );
+      if (next === BookingStatus.COMPLETED) {
+        const { start: bookingDayStart } = appDayBounds(booking.slot.startsAt);
+        const completionCheckin = await this.prisma.checkin.findFirst({
+          where: {
+            memberId: booking.memberId,
+            checkedInAt: {
+              gte: bookingDayStart,
+              lte: booking.slot.startsAt,
+            },
+          },
+          select: { id: true },
+        });
+        if (!completionCheckin)
+          throw new ApiError(
+            'PT_COMPLETION_CHECKIN_REQUIRED',
+            'Hội viên phải check-in Gym trước giờ bắt đầu buổi PT mới có thể xác nhận hoàn thành.',
+          );
+      }
       if (next === BookingStatus.NO_SHOW && booking.slot.endsAt > now)
         throw new ApiError(
           'BOOKING_NOT_ENDED',
@@ -1015,11 +1081,11 @@ export class OperationsService {
       )
     )
       memberships.unshift(checkedInToday.memberMembership);
-    if (!memberships.length)
-      throw new ApiError(
-        'MEMBERSHIP_INELIGIBLE',
-        'Hội viên không có gói Gym đang hiệu lực.',
-      );
+    const todayPtAppointments = await this.listTodayPtAppointments(
+      member.id,
+      startOfToday,
+      startOfTomorrow,
+    );
     return {
       member: {
         fullName: member.user.fullName,
@@ -1044,8 +1110,13 @@ export class OperationsService {
           : null,
       })),
       recommendedMembershipId:
-        checkedInToday?.memberMembershipId ?? memberships[0].id,
+        checkedInToday?.memberMembershipId ?? memberships[0]?.id ?? null,
       alreadyCheckedIn: Boolean(checkedInToday),
+      eligibleForGymCheckin: memberships.length > 0,
+      ineligibilityReason: memberships.length
+        ? null
+        : 'Hội viên không có gói Gym đang hiệu lực.',
+      todayPtAppointments,
     };
   }
 
