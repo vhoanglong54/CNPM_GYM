@@ -319,7 +319,7 @@ export class OperationsService {
   }
 
   private async reconcileEndedBookings() {
-    const latestEndedAt = new Date(Date.now() - PT_CHECKIN_GRACE_MS);
+    const latestEndedAt = new Date();
     const candidates = await this.prisma.ptBooking.findMany({
       where: {
         status: BookingStatus.CONFIRMED,
@@ -380,6 +380,8 @@ export class OperationsService {
               );
               return;
             }
+
+            if (closesAt > new Date()) return;
 
             const pkg = await tx.memberPtPackage.findUniqueOrThrow({
               where: { id: booking.memberPtPackageId },
@@ -662,6 +664,11 @@ export class OperationsService {
       next === BookingStatus.COMPLETED &&
       booking.status === BookingStatus.AWAITING_COMPLETION
     ) {
+      if (booking.slot.endsAt > new Date())
+        throw new ApiError(
+          'BOOKING_NOT_ENDED',
+          `Chỉ có thể xác nhận hoàn thành sau giờ kết thúc ${formatAppDateTime(booking.slot.endsAt)}.`,
+        );
       if (!booking.attendanceCheckedInAt)
         throw new ApiError(
           'PT_COMPLETION_CHECKIN_REQUIRED',
@@ -726,6 +733,22 @@ export class OperationsService {
           return updated;
         },
         { isolationLevel: 'Serializable' },
+      );
+    }
+    if (
+      next === BookingStatus.COMPLETED &&
+      booking.status === BookingStatus.CONFIRMED
+    ) {
+      const now = new Date();
+      if (booking.slot.endsAt > now)
+        throw new ApiError(
+          'BOOKING_NOT_ENDED',
+          `Chỉ có thể xác nhận hoàn thành sau giờ kết thúc ${formatAppDateTime(booking.slot.endsAt)}.`,
+        );
+      const { closesAt } = this.ptCheckinWindow(booking.slot);
+      throw new ApiError(
+        'PT_COMPLETION_CHECKIN_REQUIRED',
+        `Chưa có điểm danh PT hợp lệ. Hệ thống sẽ chờ điểm danh đến ${formatAppDateTime(closesAt)} trước khi ghi nhận vắng mặt.`,
       );
     }
     throw new ApiError(
@@ -1048,6 +1071,7 @@ export class OperationsService {
     });
 
     await this.recordPtAttendanceCheckin(member.id, user.id);
+    await this.reconcileEndedBookings();
     const todayPtAppointments = await this.listTodayPtAppointments(
       member.id,
       startOfToday,
@@ -1070,6 +1094,7 @@ export class OperationsService {
             BookingStatus.PENDING,
             BookingStatus.CONFIRMED,
             BookingStatus.CANCEL_REQUESTED,
+            BookingStatus.AWAITING_COMPLETION,
           ],
         },
         slot: {

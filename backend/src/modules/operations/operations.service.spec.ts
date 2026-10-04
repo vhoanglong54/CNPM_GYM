@@ -92,11 +92,40 @@ describe('OperationsService PT completion attendance', () => {
       attendanceCheckedInAt,
       slot: {
         trainerId: 'trainer-1',
-        startsAt: new Date(Date.now() - 60 * 60 * 1000),
-        endsAt: new Date(Date.now() + 60 * 60 * 1000),
+        startsAt: new Date(Date.now() - 61 * 60 * 1000),
+        endsAt: new Date(Date.now() - 60 * 1000),
       },
     };
   }
+
+  it('báo rõ khi PT bấm hoàn thành trước giờ kết thúc', async () => {
+    const booking = {
+      ...awaitingCompletionBooking(new Date()),
+      status: BookingStatus.CONFIRMED,
+      slot: {
+        trainerId: 'trainer-1',
+        startsAt: new Date(Date.now() - 30 * 60 * 1000),
+        endsAt: new Date(Date.now() + 30 * 60 * 1000),
+      },
+    };
+    const prisma = {
+      ptBooking: {
+        findMany: vi.fn().mockResolvedValue([]),
+        findUnique: vi.fn().mockResolvedValue(booking),
+      },
+      $transaction: vi.fn(),
+    };
+    const service = new OperationsService(prisma as never, {} as never);
+
+    await expect(
+      service.updateBooking(
+        booking.id,
+        { status: BookingStatus.COMPLETED },
+        trainerUser,
+      ),
+    ).rejects.toMatchObject({ errorCode: 'BOOKING_NOT_ENDED' });
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
 
   it('chặn hoàn thành khi buổi tập không có điểm danh PT hợp lệ', async () => {
     const booking = awaitingCompletionBooking(null);
@@ -192,7 +221,11 @@ describe('OperationsService ended PT reconciliation', () => {
     roles: [RoleCode.OWNER],
   };
 
-  function endedBooking(attendanceCheckedInAt: Date | null) {
+  function endedBooking(
+    attendanceCheckedInAt: Date | null,
+    endedMinutesAgo = 30,
+  ) {
+    const endsAt = new Date(Date.now() - endedMinutesAgo * 60 * 1000);
     return {
       id: 'booking-ended',
       slotId: 'slot-ended',
@@ -202,8 +235,8 @@ describe('OperationsService ended PT reconciliation', () => {
       attendanceCheckedInAt,
       slot: {
         trainerId: 'trainer-1',
-        startsAt: new Date(Date.now() - 90 * 60 * 1000),
-        endsAt: new Date(Date.now() - 30 * 60 * 1000),
+        startsAt: new Date(endsAt.getTime() - 60 * 60 * 1000),
+        endsAt,
         trainer: { userId: 'trainer-user-1' },
       },
       member: { userId: 'member-user-1' },
@@ -275,9 +308,43 @@ describe('OperationsService ended PT reconciliation', () => {
     );
   });
 
-  it('đưa buổi có check-in hợp lệ sang chờ PT xác nhận hoàn thành', async () => {
-    const checkedInAt = new Date(Date.now() - 45 * 60 * 1000);
-    const booking = endedBooking(checkedInAt);
+  it('chưa ghi vắng mặt khi buổi vừa kết thúc và vẫn còn thời gian đệm', async () => {
+    const booking = endedBooking(null, 2);
+    const transactionClient = {
+      ptBooking: {
+        findUniqueOrThrow: vi.fn().mockResolvedValue(booking),
+        update: vi.fn(),
+      },
+      memberPtPackage: {
+        findUniqueOrThrow: vi.fn(),
+        update: vi.fn(),
+      },
+      auditLog: { create: vi.fn() },
+    };
+    const findMany = vi
+      .fn()
+      .mockResolvedValueOnce([{ id: booking.id }])
+      .mockResolvedValueOnce([booking]);
+    const notifyUsers = vi.fn();
+    const service = new OperationsService(
+      {
+        ptBooking: { findMany },
+        $transaction: vi.fn((callback) => callback(transactionClient)),
+      } as never,
+      { notifyUsers } as never,
+    );
+
+    const result = await service.listBookings(ownerUser);
+
+    expect(result[0]).toMatchObject({ status: BookingStatus.CONFIRMED });
+    expect(transactionClient.ptBooking.update).not.toHaveBeenCalled();
+    expect(transactionClient.memberPtPackage.update).not.toHaveBeenCalled();
+    expect(notifyUsers).not.toHaveBeenCalled();
+  });
+
+  it('ngay khi hết giờ đưa buổi có check-in sang chờ PT xác nhận hoàn thành', async () => {
+    const checkedInAt = new Date(Date.now() - 10 * 60 * 1000);
+    const booking = endedBooking(checkedInAt, 2);
     const updateBooking = vi.fn().mockResolvedValue({
       ...booking,
       status: BookingStatus.AWAITING_COMPLETION,
