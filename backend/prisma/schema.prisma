@@ -52,6 +52,7 @@ enum PaymentMethod {
 enum BookingStatus {
   PENDING
   CONFIRMED
+  CANCEL_REQUESTED
   COMPLETED
   REJECTED
   CANCELLED
@@ -59,23 +60,25 @@ enum BookingStatus {
 }
 
 model User {
-  id                 String                   @id @default(uuid())
-  email              String                   @unique
-  passwordHash       String
-  fullName           String
-  phone              String?
-  status             UserStatus               @default(UNVERIFIED)
-  createdAt          DateTime                 @default(now())
-  updatedAt          DateTime                 @updatedAt
-  roles              UserRole[]
-  verificationTokens EmailVerificationToken[]
-  memberProfile      MemberProfile?
-  trainerProfile     TrainerProfile?
-  orders             Order[]                  @relation("MemberOrders")
-  confirmedPayments  Payment[]                @relation("ConfirmedPayments")
-  resolvedBookings   PtBooking[]              @relation("BookingResolvedBy")
-  notifications      Notification[]
-  auditLogs          AuditLog[]               @relation("AuditActor")
+  id                   String                   @id @default(uuid())
+  email                String                   @unique
+  passwordHash         String
+  fullName             String
+  phone                String?
+  status               UserStatus               @default(UNVERIFIED)
+  createdAt            DateTime                 @default(now())
+  updatedAt            DateTime                 @updatedAt
+  roles                UserRole[]
+  verificationTokens   EmailVerificationToken[]
+  memberProfile        MemberProfile?
+  trainerProfile       TrainerProfile?
+  orders               Order[]                  @relation("MemberOrders")
+  confirmedPayments    Payment[]                @relation("ConfirmedPayments")
+  resolvedBookings     PtBooking[]              @relation("BookingResolvedBy")
+  cancellationRequests PtBooking[]              @relation("BookingCancellationRequestedBy")
+  staffReviewsReceived StaffReview[]            @relation("StaffReviewsReceived")
+  notifications        Notification[]
+  auditLogs            AuditLog[]               @relation("AuditActor")
 
   @@map("users")
 }
@@ -125,6 +128,7 @@ model MemberProfile {
   ptPackages     MemberPtPackage[]
   bookings       PtBooking[]
   trainerReviews TrainerReview[]
+  staffReviews   StaffReview[]
   checkins       Checkin[]
 
   @@map("member_profiles")
@@ -229,28 +233,48 @@ model PtSlot {
 }
 
 model PtBooking {
-  id                String          @id @default(uuid())
-  slotId            String
-  memberId          String
-  memberPtPackageId String
-  status            BookingStatus   @default(PENDING)
-  holdKey           String?         @unique
-  note              String?
-  resolutionReason  String?
-  resolvedById      String?
-  resolvedAt        DateTime?
-  completedAt       DateTime?
-  createdAt         DateTime        @default(now())
-  updatedAt         DateTime        @updatedAt
-  slot              PtSlot          @relation(fields: [slotId], references: [id])
-  member            MemberProfile   @relation(fields: [memberId], references: [id])
-  memberPtPackage   MemberPtPackage @relation(fields: [memberPtPackageId], references: [id])
-  resolvedBy        User?           @relation("BookingResolvedBy", fields: [resolvedById], references: [id])
-  review            TrainerReview?
+  id                        String          @id @default(uuid())
+  slotId                    String
+  memberId                  String
+  memberPtPackageId         String
+  status                    BookingStatus   @default(PENDING)
+  holdKey                   String?         @unique
+  note                      String?
+  resolutionReason          String?
+  resolvedById              String?
+  resolvedAt                DateTime?
+  cancellationRequestedById String?
+  cancellationRequestedAt   DateTime?
+  cancellationReason        String?
+  completedAt               DateTime?
+  createdAt                 DateTime        @default(now())
+  updatedAt                 DateTime        @updatedAt
+  slot                      PtSlot          @relation(fields: [slotId], references: [id])
+  member                    MemberProfile   @relation(fields: [memberId], references: [id])
+  memberPtPackage           MemberPtPackage @relation(fields: [memberPtPackageId], references: [id])
+  resolvedBy                User?           @relation("BookingResolvedBy", fields: [resolvedById], references: [id])
+  cancellationRequestedBy   User?           @relation("BookingCancellationRequestedBy", fields: [cancellationRequestedById], references: [id])
+  review                    TrainerReview?
 
   @@index([slotId, status])
   @@index([memberId, createdAt])
   @@map("pt_bookings")
+}
+
+model StaffReview {
+  id        String        @id @default(uuid())
+  staffId   String
+  memberId  String
+  rating    Int
+  comment   String
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  staff     User          @relation("StaffReviewsReceived", fields: [staffId], references: [id])
+  member    MemberProfile @relation(fields: [memberId], references: [id])
+
+  @@unique([staffId, memberId])
+  @@index([staffId, createdAt])
+  @@map("staff_reviews")
 }
 
 model TrainerReview {
