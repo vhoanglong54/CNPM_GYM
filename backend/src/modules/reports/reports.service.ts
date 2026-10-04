@@ -89,6 +89,7 @@ export class ReportsService {
 
   async operationsReport() {
     const { start, end } = appDayBounds();
+    const now = new Date();
     const [
       awaitingPayments,
       paidPayments,
@@ -98,7 +99,10 @@ export class ReportsService {
       recentAuditLogs,
     ] = await Promise.all([
       this.prisma.payment.count({
-        where: { status: PaymentStatus.AWAITING_CONFIRMATION },
+        where: {
+          status: PaymentStatus.AWAITING_CONFIRMATION,
+          OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+        },
       }),
       this.prisma.payment.findMany({
         where: { status: PaymentStatus.PAID },

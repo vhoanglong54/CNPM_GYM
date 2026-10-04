@@ -4,9 +4,9 @@ import {
   OrderStatus,
   PaymentMethod,
   PaymentStatus,
+  Prisma,
   ProductType,
   RoleCode,
-  type Prisma,
 } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { fileURLToPath } from 'node:url';
@@ -27,6 +27,19 @@ const receiptFontPath = fileURLToPath(
   new URL('../../assets/fonts/DejaVuSans.ttf', import.meta.url),
 );
 const PAYMENT_CONFIRMATION_TTL_MS = 48 * 60 * 60 * 1000;
+const PAYMENT_TRANSACTION_MAX_ATTEMPTS = 3;
+const PAYMENT_TRANSACTION_OPTIONS = {
+  isolationLevel: 'Serializable' as const,
+  maxWait: 10_000,
+  timeout: 20_000,
+};
+const RETRYABLE_PRISMA_CODES = new Set([
+  'P1001',
+  'P1002',
+  'P2024',
+  'P2028',
+  'P2034',
+]);
 
 @Injectable()
 export class OrdersService {
@@ -84,17 +97,10 @@ export class OrdersService {
   }
 
   async list(user: AuthUser) {
-    await this.prisma.payment.updateMany({
-      where: {
-        status: PaymentStatus.AWAITING_CONFIRMATION,
-        expiresAt: { lte: new Date() },
-      },
-      data: { status: PaymentStatus.EXPIRED },
-    });
     const canSeeAll =
       user.roles.includes(RoleCode.OWNER) ||
       user.roles.includes(RoleCode.RECEPTIONIST);
-    return this.prisma.order.findMany({
+    const orders = await this.prisma.order.findMany({
       where: canSeeAll ? {} : { memberId: user.id },
       include: {
         items: true,
@@ -116,6 +122,17 @@ export class OrdersService {
       },
       orderBy: { createdAt: 'desc' },
     });
+    const now = Date.now();
+    return orders.map((order) => ({
+      ...order,
+      payments: order.payments.map((payment) =>
+        payment.status === PaymentStatus.AWAITING_CONFIRMATION &&
+        payment.expiresAt &&
+        payment.expiresAt.getTime() <= now
+          ? { ...payment, status: PaymentStatus.EXPIRED }
+          : payment,
+      ),
+    }));
   }
 
   async pay(orderId: string, dto: PayOrderDto, user: AuthUser) {
@@ -176,20 +193,11 @@ export class OrdersService {
 
   async confirmPayment(orderId: string, paymentId: string, user: AuthUser) {
     this.assertPaymentStaff(user);
-    await this.prisma.payment.updateMany({
-      where: {
-        id: paymentId,
-        orderId,
-        status: PaymentStatus.AWAITING_CONFIRMATION,
-        expiresAt: { lte: new Date() },
-      },
-      data: { status: PaymentStatus.EXPIRED },
-    });
-    return this.prisma.$transaction(
-      async (tx) => {
+    try {
+      return await this.runPaymentTransaction(async (tx) => {
         const payment = await tx.payment.findFirst({
           where: { id: paymentId, orderId },
-          include: { order: true },
+          include: { order: true, receipt: true },
         });
         if (!payment)
           throw new ApiError(
@@ -197,12 +205,28 @@ export class OrdersService {
             'Không tìm thấy yêu cầu thanh toán.',
             HttpStatus.NOT_FOUND,
           );
-        if (payment.status === PaymentStatus.EXPIRED)
+        if (
+          payment.status === PaymentStatus.EXPIRED ||
+          (payment.status === PaymentStatus.AWAITING_CONFIRMATION &&
+            payment.expiresAt &&
+            payment.expiresAt.getTime() <= Date.now())
+        )
           throw new ApiError(
             'PAYMENT_REQUEST_EXPIRED',
             'Yêu cầu thanh toán đã hết hạn. Hội viên cần gửi lại yêu cầu.',
             HttpStatus.CONFLICT,
           );
+        if (
+          payment.status === PaymentStatus.PAID &&
+          payment.order.status === OrderStatus.PAID &&
+          payment.receipt
+        )
+          return {
+            orderId,
+            status: OrderStatus.PAID,
+            payment,
+            receipt: payment.receipt,
+          };
         if (payment.status !== PaymentStatus.AWAITING_CONFIRMATION)
           throw new ApiError(
             'PAYMENT_STATE_INVALID',
@@ -250,9 +274,25 @@ export class OrdersService {
           payment: paidPayment,
           receipt: paidPayment.receipt,
         };
-      },
-      { isolationLevel: 'Serializable' },
-    );
+      }, 'confirm transfer payment');
+    } catch (error) {
+      if (!this.isRetryableTransactionError(error)) throw error;
+      try {
+        const committed = await this.findCompletedPaymentResult(
+          orderId,
+          paymentId,
+        );
+        if (committed) return committed;
+      } catch (recoveryError) {
+        if (!this.isRetryableTransactionError(recoveryError))
+          throw recoveryError;
+      }
+      throw new ApiError(
+        'PAYMENT_CONFIRMATION_TEMPORARILY_UNAVAILABLE',
+        'Hệ thống chưa thể khóa giao dịch để xác nhận. Vui lòng chờ vài giây rồi thử lại; yêu cầu thanh toán vẫn được giữ nguyên.',
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
+    }
   }
 
   async rejectPayment(
@@ -561,6 +601,68 @@ export class OrdersService {
       );
   }
 
+  private async runPaymentTransaction<T>(
+    operation: (tx: Prisma.TransactionClient) => Promise<T>,
+    operationName: string,
+  ): Promise<T> {
+    for (
+      let attempt = 1;
+      attempt <= PAYMENT_TRANSACTION_MAX_ATTEMPTS;
+      attempt += 1
+    ) {
+      try {
+        return await this.prisma.$transaction(
+          operation,
+          PAYMENT_TRANSACTION_OPTIONS,
+        );
+      } catch (error) {
+        if (
+          !this.isRetryableTransactionError(error) ||
+          attempt === PAYMENT_TRANSACTION_MAX_ATTEMPTS
+        )
+          throw error;
+        console.warn(
+          'Retrying payment transaction after transient database error.',
+          {
+            attempt,
+            code: error.code,
+            operation: operationName,
+          },
+        );
+        await new Promise((resolve) => setTimeout(resolve, attempt * 100));
+      }
+    }
+    throw new Error('Payment transaction retry loop ended unexpectedly.');
+  }
+
+  private isRetryableTransactionError(
+    error: unknown,
+  ): error is Prisma.PrismaClientKnownRequestError {
+    return (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      RETRYABLE_PRISMA_CODES.has(error.code)
+    );
+  }
+
+  private async findCompletedPaymentResult(orderId: string, paymentId: string) {
+    const payment = await this.prisma.payment.findFirst({
+      where: {
+        id: paymentId,
+        orderId,
+        status: PaymentStatus.PAID,
+        order: { status: OrderStatus.PAID },
+      },
+      include: { order: true, receipt: true },
+    });
+    if (!payment?.receipt) return null;
+    return {
+      orderId,
+      status: OrderStatus.PAID,
+      payment,
+      receipt: payment.receipt,
+    };
+  }
+
   private createTransactionCode() {
     return `PAY-${Date.now()}-${randomUUID().slice(0, 6).toUpperCase()}`;
   }
@@ -715,9 +817,7 @@ export class OrdersService {
       doc.text('Người xác nhận: Không ghi nhận (giao dịch dữ liệu cũ)');
       doc.text('Tài khoản xác nhận: Không có dữ liệu');
     }
-    doc.text(
-      `Thời gian xác nhận: ${formatAppDateTime(payment.confirmedAt)}`,
-    );
+    doc.text(`Thời gian xác nhận: ${formatAppDateTime(payment.confirmedAt)}`);
     doc.moveDown();
     data.order.items.forEach((item) =>
       doc.text(
