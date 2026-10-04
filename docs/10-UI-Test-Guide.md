@@ -57,13 +57,14 @@ Dữ liệu mẫu gồm 3 gói Gym (1, 2, 3 tháng), 3 gói PT (8, 12, 24 buổi
 ## 3. Luồng đăng ký và xác thực email
 
 1. Ở màn hình đăng nhập, chọn **Tạo tài khoản hội viên**.
-2. Nhập email chưa tồn tại, họ tên và mật khẩu hợp lệ.
+2. Nhập email chưa tồn tại, họ tên, mật khẩu hợp lệ và nhập lại chính xác mật khẩu. Có thể dùng biểu tượng con mắt riêng ở từng ô để kiểm tra nội dung trước khi gửi.
 3. Mở email nhận mã OTP, nhập mã và xác nhận.
 4. Quay về đăng nhập bằng tài khoản vừa tạo.
 
 Kết quả mong đợi:
 
 - Email của tài khoản ACTIVE/INACTIVE báo đã tồn tại. Email của đăng ký còn UNVERIFIED tiếp tục đăng ký cũ và cấp/gợi ý gửi lại OTP; cả hai trường hợp đều không tạo User trùng.
+- Hai ô mật khẩu không khớp phải hiển thị cảnh báo và không cho gửi đăng ký; trường `confirmPassword` chỉ được kiểm tra tại giao diện và không gửi lên API.
 - OTP đúng kích hoạt tài khoản; OTP sai hoặc hết hạn bị từ chối.
 - Sau khi đăng nhập, người dùng chỉ thấy menu dành cho Hội viên.
 
