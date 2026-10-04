@@ -136,14 +136,14 @@ export class UsersService {
     });
   }
 
-  listStaff() {
-    return this.prisma.user.findMany({
+  async listStaff() {
+    const staff = await this.prisma.user.findMany({
       where: {
         roles: {
           some: {
             role: {
               code: {
-                in: [RoleCode.OWNER, RoleCode.RECEPTIONIST, RoleCode.TRAINER],
+                in: [RoleCode.RECEPTIONIST, RoleCode.TRAINER],
               },
             },
           },
@@ -158,9 +158,22 @@ export class UsersService {
         createdAt: true,
         roles: { select: { role: { select: { code: true, name: true } } } },
         trainerProfile: true,
+        staffReviewsReceived: { select: { rating: true } },
       },
       orderBy: { fullName: 'asc' },
     });
+    return staff.map(({ staffReviewsReceived, ...item }) => ({
+      ...item,
+      rating: {
+        average: staffReviewsReceived.length
+          ? staffReviewsReceived.reduce(
+              (sum, review) => sum + review.rating,
+              0,
+            ) / staffReviewsReceived.length
+          : null,
+        count: staffReviewsReceived.length,
+      },
+    }));
   }
 
   async deleteMember(id: string, actor: AuthUser) {
@@ -182,6 +195,7 @@ export class UsersService {
                 ptPackages: true,
                 bookings: true,
                 checkins: true,
+                staffReviews: true,
               },
             },
           },
@@ -212,7 +226,8 @@ export class UsersService {
       user.memberProfile._count.memberships +
       user.memberProfile._count.ptPackages +
       user.memberProfile._count.bookings +
-      user.memberProfile._count.checkins;
+      user.memberProfile._count.checkins +
+      user.memberProfile._count.staffReviews;
     if (historyCount > 0)
       throw new ApiError(
         'MEMBER_HAS_HISTORY',

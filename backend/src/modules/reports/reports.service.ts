@@ -135,8 +135,13 @@ export class ReportsService {
       }),
       this.prisma.trainerProfile.findMany({
         include: {
-          user: { select: { fullName: true, email: true } },
-          reviews: { select: { rating: true } },
+          user: {
+            select: {
+              fullName: true,
+              email: true,
+              staffReviewsReceived: { select: { rating: true } },
+            },
+          },
           slots: {
             select: {
               bookings: { select: { status: true } },
@@ -164,7 +169,13 @@ export class ReportsService {
       paidPayments.reduce<
         Record<
           string,
-          { id: string; fullName: string; email: string; amount: number; count: number }
+          {
+            id: string;
+            fullName: string;
+            email: string;
+            amount: number;
+            count: number;
+          }
         >
       >((totals, payment) => {
         const confirmer = payment.confirmedBy;
@@ -184,7 +195,9 @@ export class ReportsService {
       bookingGroups.map((group) => [group.status, group._count.status]),
     );
     const trainerPerformance = trainers.map((trainer) => {
-      const ratings = trainer.reviews.map((review) => review.rating);
+      const ratings = trainer.user.staffReviewsReceived.map(
+        (review) => review.rating,
+      );
       const bookings = trainer.slots.flatMap((slot) => slot.bookings);
       const countStatus = (status: BookingStatus) =>
         bookings.filter((booking) => booking.status === status).length;
