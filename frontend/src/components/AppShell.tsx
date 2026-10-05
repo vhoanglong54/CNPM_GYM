@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
-import { BarChart3, Bell, CalendarDays, ClipboardCheck, Dumbbell, LogOut, Menu, PackageOpen, ReceiptText, ShieldCheck, Star, UserRound, Users, X, Zap } from 'lucide-react'
+import { BarChart3, Bell, CalendarDays, ClipboardCheck, Dumbbell, LogOut, Menu, PackageOpen, ReceiptText, ShieldCheck, Star, TrendingUp, UserRound, Users, X, Zap } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { getActiveRequestCount } from '../lib/api'
 import type { Role } from '../types'
@@ -17,6 +17,7 @@ const nav = [
   { to: '/staff', label: 'Nhân sự', icon: ShieldCheck, roles: ['OWNER'] },
   { to: '/staff-reviews', label: 'Đánh giá nhân viên', icon: Star, roles: ['MEMBER'] },
   { to: '/reports', label: 'Báo cáo', icon: BarChart3, roles: ['OWNER'] },
+  { to: '/monthly-revenue', label: 'Doanh thu tháng', icon: TrendingUp, roles: ['OWNER'] },
   { to: '/schedule', label: 'Lịch PT', icon: CalendarDays, roles: ['OWNER', 'TRAINER', 'MEMBER'] },
   { to: '/checkin', label: 'Check-in', icon: ClipboardCheck, roles: ['OWNER', 'RECEPTIONIST', 'MEMBER'] },
   { to: '/notifications', label: 'Thông báo', icon: Bell, roles: ['OWNER', 'RECEPTIONIST', 'TRAINER', 'MEMBER'] },
