@@ -1,10 +1,11 @@
-import { Controller, Get, UseGuards } from '@nestjs/common';
+import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { RoleCode } from '@prisma/client';
 import { Roles } from '../../common/auth.decorators.js';
 import { RolesGuard } from '../../common/roles.guard.js';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
 import { ReportsService } from './reports.service.js';
+import { MonthlyRevenueQueryDto } from './reports.dto.js';
 
 @ApiTags('reports')
 @ApiBearerAuth()
@@ -18,5 +19,13 @@ export class ReportsController {
   }
   @Get('operations') async operations() {
     return { success: true, data: await this.service.operationsReport() };
+  }
+  @Get('monthly-revenue') async monthlyRevenue(
+    @Query() query: MonthlyRevenueQueryDto,
+  ) {
+    return {
+      success: true,
+      data: await this.service.monthlyRevenue(query.year),
+    };
   }
 }

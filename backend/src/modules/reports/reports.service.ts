@@ -2,16 +2,82 @@ import { Injectable } from '@nestjs/common';
 import {
   BookingStatus,
   OrderStatus,
+  PaymentMethod,
   PaymentStatus,
   RoleCode,
   UserStatus,
 } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service.js';
-import { appDayBounds } from '../../common/date-time.js';
+import {
+  APP_TIME_ZONE,
+  appDayBounds,
+  appYear,
+  appYearBounds,
+} from '../../common/date-time.js';
 
 @Injectable()
 export class ReportsService {
   constructor(private readonly prisma: PrismaService) {}
+
+  async monthlyRevenue(year = appYear()) {
+    const { start, end } = appYearBounds(year);
+    const payments = await this.prisma.payment.findMany({
+      where: {
+        status: PaymentStatus.PAID,
+        paidAt: { gte: start, lt: end },
+      },
+      select: { amount: true, method: true, paidAt: true },
+      orderBy: { paidAt: 'asc' },
+    });
+    const monthFormatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: APP_TIME_ZONE,
+      month: 'numeric',
+    });
+    const months = Array.from({ length: 12 }, (_, index) => ({
+      month: index + 1,
+      label: `Tháng ${index + 1}`,
+      amount: 0,
+      count: 0,
+      cash: 0,
+      transfer: 0,
+    }));
+
+    for (const payment of payments) {
+      if (!payment.paidAt) continue;
+      const month = Number(monthFormatter.format(payment.paidAt));
+      const summary = months[month - 1];
+      const amount = Number(payment.amount);
+      summary.amount += amount;
+      summary.count += 1;
+      if (payment.method === PaymentMethod.CASH) summary.cash += amount;
+      if (payment.method === PaymentMethod.TRANSFER_DEMO)
+        summary.transfer += amount;
+    }
+
+    const totalRevenue = months.reduce(
+      (total, month) => total + month.amount,
+      0,
+    );
+    const bestMonth = totalRevenue
+      ? months.reduce((best, month) =>
+          month.amount > best.amount ? month : best,
+        )
+      : null;
+
+    return {
+      year,
+      totalRevenue,
+      totalTransactions: months.reduce(
+        (total, month) => total + month.count,
+        0,
+      ),
+      averageMonthlyRevenue: totalRevenue / 12,
+      bestMonth: bestMonth
+        ? { month: bestMonth.month, amount: bestMonth.amount }
+        : null,
+      months,
+    };
+  }
 
   async ownerDashboard() {
     const now = new Date();
