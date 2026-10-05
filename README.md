@@ -1,6 +1,6 @@
 # Titan Gym Management System
 
-Responsive Web App quản lý một phòng Gym với 4 vai trò (Chủ phòng, Lễ tân, Huấn luyện viên, Hội viên), OTP email, RBAC, gói Gym theo thời hạn, gói PT theo buổi, lịch PT và yêu cầu hủy muộn, đánh giá PT/Lễ tân, QR check-in, thanh toán mô phỏng có nhân viên phê duyệt, phiếu thu PDF, thông báo và báo cáo đối soát.
+Responsive Web App quản lý một phòng Gym với 4 vai trò (Chủ phòng, Lễ tân, Huấn luyện viên, Hội viên), OTP email, RBAC, gói Gym theo thời hạn, gói PT theo buổi, lịch PT và yêu cầu hủy muộn, đánh giá PT/Lễ tân, QR check-in, thanh toán mô phỏng có nhân viên phê duyệt, phiếu thu PDF, thông báo, báo cáo đối soát và doanh thu theo tháng dành riêng cho Chủ phòng.
 
 > Toàn bộ thanh toán trong hệ thống là **MÔ PHỎNG**, không kết nối ngân hàng và không có giá trị thanh toán hoặc thuế.
 

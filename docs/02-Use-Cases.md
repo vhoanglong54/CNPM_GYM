@@ -46,7 +46,7 @@ Owner lọc danh sách theo **Còn làm việc/Đã nghỉ việc**, sắp xếp
 
 ## UC-06 — Dashboard Owner
 
-Owner xem tổng payment PAID, phân loại phương thức, hội viên ACTIVE, quyền lợi Gym hợp lệ, check-in, booking đang mở, đơn PENDING và giao dịch gần nhất. Màn hình **Báo cáo** bổ sung tiền mặt trong ngày, doanh thu theo tài khoản xác nhận, trạng thái PT, điểm PT và audit log.
+Owner xem tổng payment PAID, phân loại phương thức, hội viên ACTIVE, quyền lợi Gym hợp lệ, check-in, booking đang mở, đơn PENDING và giao dịch gần nhất. Màn hình **Báo cáo** bổ sung tiền mặt trong ngày, doanh thu theo tài khoản xác nhận, trạng thái PT, điểm PT và audit log. Trang riêng **Doanh thu tháng** cho phép chọn năm, xem biểu đồ 12 tháng, số giao dịch, tháng cao nhất và đối chiếu tiền mặt/chuyển khoản; đơn chưa thanh toán hoặc bị từ chối không được tính.
 
 ## UC-07 — Thông báo công việc
 

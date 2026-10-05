@@ -88,6 +88,7 @@ Lưu ý phản ánh đúng implementation hiện tại: `GET /operations/checkin
 |---|---|---|
 | GET | `/reports/dashboard` | Owner. |
 | GET | `/reports/operations` | Owner. |
+| GET | `/reports/monthly-revenue?year=YYYY` | Owner; tổng hợp 12 tháng chỉ từ Payment `PAID` theo `paidAt` và múi giờ `Asia/Ho_Chi_Minh`, gồm tổng thu, số giao dịch, tháng cao nhất và tiền mặt/chuyển khoản. `year` từ 2000 đến 2100, mặc định là năm hiện tại. |
 | GET | `/notifications` | Authenticated; tối đa 50 thông báo của chính tài khoản và tạo nhắc lịch 24 giờ chống trùng khi cần. |
 | PATCH | `/notifications/read-all` | Chính tài khoản. |
 | PATCH | `/notifications/:id/read` | Chính tài khoản sở hữu notification. |

@@ -27,7 +27,7 @@ Ngoài phạm vi: thanh toán thật, hóa đơn điện tử, kế toán thuế
 | FR-08 | Trainer mở slot tương lai không trùng; Member lọc theo ngày, sắp xếp theo đánh giá/lịch sớm và chỉ đặt slot còn trống. |
 | FR-09 | Đặt lịch giữ ngay một buổi PT. Quét/xác nhận tại quầy từ 60 phút trước giờ bắt đầu đến 5 phút sau giờ kết thúc ghi điểm danh PT. Ngay khi hết giờ: có điểm danh chuyển `AWAITING_COMPLETION` để PT xác nhận; chưa có điểm danh được chờ thêm 5 phút rồi tự chuyển `NO_SHOW` và trừ buổi. |
 | FR-10 | Hội viên xuất trình QR cá nhân; Lễ tân/Chủ phòng quét hoặc nhập mã. Ngay khi tra cứu, giao diện quầy chỉ hiển khối nhắc lịch PT nếu Hội viên có booking hoạt động trong ngày, kể cả khi không có gói Gym hợp lệ. API chống gửi lặp và chỉ ghi một lượt/Hội viên/ngày; quét lại không ghi/trừ thêm. Check-in không tự đổi booking PT. |
-| FR-11 | Owner xem tổng thu chỉ từ payment PAID, hội viên, check-in, booking và gói sắp hết hạn. |
+| FR-11 | Owner xem tổng thu chỉ từ payment PAID, hội viên, check-in, booking và gói sắp hết hạn; trang doanh thu theo tháng cho phép chọn năm, xem 12 tháng và tách tiền mặt/chuyển khoản. |
 | FR-12 | UI hiển thị thông báo tiếng Việt tại thao tác và vô hiệu hóa nút khi đang gửi. |
 | FR-13 | Người dùng xem/cập nhật hồ sơ và đổi mật khẩu sau khi xác nhận mật khẩu hiện tại. |
 | FR-14 | Member được đánh giá mỗi PT/Lễ tân đang làm việc một lần bằng 1–5 sao kèm nhận xét, không phụ thuộc lịch PT; có thể cập nhật đánh giá. Owner xem toàn bộ phản hồi. |

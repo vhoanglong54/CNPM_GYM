@@ -45,5 +45,7 @@
 | TC-39A | Điểm danh trong 5 phút đệm sau giờ kết thúc | Chuyển ngay AWAITING_COMPLETION; PT có thể xác nhận hoàn thành mà không phải chờ hết thời gian đệm. |
 | TC-40 | Không có điểm danh khi hết 5 phút đệm | Tự động NO_SHOW và trừ đúng một buổi; không có nút hay API ngoại lệ để đổi thành COMPLETED. |
 | TC-41 | Hội viên đã check-in Gym từ trước rồi quét lại trong cửa sổ PT | Không tạo/trừ thêm lượt Gym nhưng booking được lưu `attendanceCheckedInAt`. |
+| TC-42 | Owner xem doanh thu theo tháng của một năm | Trả đủ 12 tháng; chỉ Payment PAID được tính theo `paidAt` tại `Asia/Ho_Chi_Minh`; tổng tháng bằng tổng năm và tách đúng tiền mặt/chuyển khoản. |
+| TC-43 | Tài khoản không phải Owner gọi báo cáo doanh thu tháng | 403, không trả dữ liệu doanh thu. |
 
 Automated hiện kiểm tra health/controller cơ bản, ranh giới ngày `Asia/Ho_Chi_Minh`, check-in mới/quét lại/idempotency/điểm danh PT, tự đối soát hoàn thành-vắng mặt, JWT cũ bị chặn sau khi tài khoản nghỉ việc, yêu cầu hủy muộn và đánh giá nhân viên; các TC còn lại cần được chạy lại với database test hoặc theo `docs/10-UI-Test-Guide.md` sau mỗi migration/deploy.

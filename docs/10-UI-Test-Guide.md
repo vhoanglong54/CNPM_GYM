@@ -275,8 +275,9 @@ Kết quả mong đợi: chỉ đúng người nhận thấy thông báo; số c
 2. Đối chiếu số thanh toán chờ duyệt với trang **Giao dịch**.
 3. Để Hội viên gửi xác nhận tiền mặt, nhân viên xác nhận thu rồi kiểm tra bảng **Tiền mặt hôm nay**, người thu và tổng tiền.
 4. Đối chiếu doanh thu theo người xác nhận, trạng thái/điểm PT và nhật ký thao tác gần đây.
+5. Mở **Doanh thu tháng**, chọn năm cần xem và kiểm tra biểu đồ đủ 12 tháng, tổng doanh thu, số giao dịch, trung bình tháng, tháng cao nhất và bảng tách tiền mặt/chuyển khoản.
 
-Kết quả mong đợi: chỉ Chủ phòng truy cập được; doanh thu chỉ lấy Payment PAID và đối soát ngày theo `Asia/Ho_Chi_Minh`.
+Kết quả mong đợi: chỉ Chủ phòng truy cập được; doanh thu chỉ lấy Payment PAID và đối soát ngày/tháng theo `Asia/Ho_Chi_Minh`. Tổng 12 tháng phải bằng tổng năm; đơn chờ, từ chối, hết hạn hoặc thất bại không được tính.
 
 ## 9. Kiểm thử đồng thời trên nhiều máy
 
